@@ -1,99 +1,124 @@
-# KOFI — Réservation de coiffure au Cameroun
+# KOFI — Réservation beauté au Cameroun
 
-KOFI est une plateforme de découverte et de réservation de professionnels de la coiffure, pensée pour réduire les appels, rendre les tarifs lisibles et exposer les disponibilités. Cette livraison constitue un MVP de démonstration testable : recherche, filtres, profils, sélection de plusieurs prestations, créneau, demande de réservation, annulation, schéma backend, CI, documentation et base de reprise mobile. Le catalogue et les réservations sont enregistrés en base (MySQL/MariaDB) avec contrôle transactionnel des chevauchements ; l’interface web lit catalogue, créneaux libres et réservations depuis l’API.
+KOFI est une plateforme de réservation de professionnels de la beauté (coiffure, barbier, tresses, ongles, maquillage, esthétique) pensée pour le Cameroun. Les clients trouvent un salon, voient les tarifs et les créneaux libres et réservent en ligne. Les professionnels gèrent leur agenda, leur équipe et leurs offres. L’équipe KOFI modère et pilote la plateforme.
 
-> **Important — mode démonstration.** Le catalogue visible dans l’interface est explicitement composé de données de test. Aucune photo aléatoire n’est présentée comme une réalisation réelle et aucun paiement réel n’est simulé.
+> **Version de démonstration.** Le catalogue (salons, avis, photos) est composé de données de test et les photos sont des illustrations. Le paiement Mobile Money fonctionne en **mode test** uniquement : aucune somme réelle n’est débitée tant qu’un prestataire de paiement n’est pas branché.
+
+## Fonctionnalités
+
+### Clients
+- Recherche par texte, ville, spécialité et mode (salon / domicile). Tri par recommandation, note, prix ou nouveauté. Filtres par disponibilité (aujourd’hui, demain, jour précis, calculés sur les vrais créneaux libres), par note minimale et par offres.
+- Badge **Top Rated** (note ≥ 4,5 sur au moins 3 avis) et prix « Dès X FCFA ».
+- Profil du salon : prestations, choix du **collaborateur** (ou « peu importe »), créneaux avec remises **heures creuses**, avis et photos.
+- Réservation avec code promo, **points de fidélité** et **carte cadeau**. Annulation, **déplacement d’un rendez-vous** et avis après la prestation.
+- **Favoris**, **fidélité** (1 point par tranche de 100 FCFA ; 100 points = 500 FCFA, jusqu’à 50 % du prix), **cartes cadeaux** de 5 000 à 200 000 FCFA valables 1 an, notifications et **Aide / FAQ**.
+
+### Professionnels
+- Tableau de bord, demandes à traiter, agenda, historique et revenus.
+- Prestations, horaires et congés, **équipe** (agenda propre à chaque collaborateur), **heures creuses** (−5 à −50 % par jour et plage horaire), photos et réponses aux avis.
+
+### Équipe KOFI
+| Rôle | Accès |
+| --- | --- |
+| Support | Réservations et signalements ; lecture du reste |
+| Modérateur | Validation des professionnels, suspensions, avis, photos |
+| Administrateur | Tout le back-office `/admin` : paiements, codes promo, nomination des agents de support et des modérateurs |
+| Super-administrateur | Espace `/superadmin` : création et retrait des administrateurs, suspension de tout compte, journal complet. Ce rôle ne s’attribue que par script et ne peut être ni modifié ni suspendu depuis le site. Sa session dure 12 h. |
+
+Chaque type de compte (visiteur, client, professionnel, équipe, super-admin) a son propre menu. Le serveur revérifie le rôle à chaque appel : masquer un lien n’est jamais la seule protection.
 
 ## Stack
 
-Le web utilise React 19, Vite, TypeScript, Tailwind CSS et Wouter. Le serveur utilise Express, tRPC et Drizzle ORM. La base du starter est MySQL-compatible et peut être remplacée par PostgreSQL avec adaptation du driver et des enums ; la logique métier reste derrière les contrats tRPC. Les tests utilisent Vitest. Les dépendances sont verrouillées par pnpm 10.18.0.
+- **Web :** React 19, Vite 7, TypeScript, Wouter, Three.js pour l’effet 3D de la page d’accueil. Le site est installable (PWA).
+- **Serveur :** Express, tRPC 11 et Drizzle ORM sur MySQL 8. Les sessions sont des cookies JWT signés.
+- **Connexion :** e-mail + mot de passe. Les mots de passe sont stockés sous forme d’empreinte scrypt salée, et les essais ratés sont limités. Manus OAuth reste disponible s’il est configuré.
+- **Tests :** Vitest, dont des suites sur une vraie base MySQL. **Mobile :** application Expo dans `apps/mobile`.
 
-L’authentification conserve Manus OAuth par défaut, conformément au starter sécurisé. Elle s’appuie sur la session `webdev_app_session`, le JWT de projet et les rôles serveur. Il n’y a pas de compte email/mot de passe inventé. Les secrets ne doivent jamais être ajoutés au dépôt.
+## Installation
+
+Prérequis : Node.js 22, pnpm 10 et MySQL 8.
+
+```bash
+pnpm install
+cp .env.example .env      # puis renseigner DATABASE_URL, MANUS_JWT_SECRET, MANUS_PROJECT_ID
+pnpm db:migrate           # crée les tables
+pnpm db:seed              # catalogue de démonstration (refusé en production sans --force)
+pnpm exec tsx scripts/create-accounts.ts   # comptes super-admin, admin, client et pro de démo
+```
+
+Le script de comptes tire des mots de passe au hasard et les écrit **uniquement** dans `COMPTES-KOFI.local.md`, un fichier ignoré par Git. Pour changer un mot de passe :
+
+```bash
+pnpm exec tsx scripts/set-password.ts <email> "<nouveau mot de passe>"
+```
+
+## Lancer le site
+
+```bash
+pnpm dev          # macOS / Linux
+```
+
+Sous Windows (PowerShell) :
+
+```powershell
+$env:NODE_ENV='development'; pnpm exec tsx watch server/_core/index.ts
+```
+
+Le site s’ouvre sur http://localhost:3000. Pages utiles : `/connexion`, `/professionnel`, `/admin` et `/superadmin`.
+
+## Paiement (Mobile Money)
+
+Le paiement se règle sans toucher au code, par variables d’environnement :
+
+| Variable | Rôle |
+| --- | --- |
+| `PAYMENT_PROVIDER` | vide = désactivé ; `test` = mode test (refusé en production) ; sinon nom d’un prestataire réel |
+| `PAYMENT_WEBHOOK_SECRET` | secret de signature des webhooks |
+| `PAYMENT_MODE` | `full` (paiement complet) ou `deposit` (acompte) |
+| `PAYMENT_DEPOSIT_PERCENT`, `PAYMENT_FREE_CANCEL_HOURS`, `KOFI_COMMISSION_PERCENT` | acompte, délai d’annulation gratuite et commission |
+
+En mode test, des boutons simulent la réponse de l’opérateur : côté client pour les paiements, dans le back-office pour les paiements et les remboursements. Seul un webhook signé (`POST /api/payments/webhook/:provider`) peut valider un paiement réel. Brancher un vrai prestataire revient à écrire un adaptateur dans `server/modules/payments/` (voir `documentation/integrations.md`).
+
+## Tests et qualité
+
+```bash
+pnpm check                                   # TypeScript
+pnpm test                                    # tests unitaires
+TEST_DATABASE_URL=mysql://…/kofi_test pnpm test   # + suites sur base réelle (base vidée à chaque lancement)
+pnpm build                                   # build de production
+```
+
+La CI GitHub Actions lance l’installation, `check`, `test` et `build` à chaque envoi.
 
 ## Structure
 
 ```text
-KOFI/
-├── apps/mobile/           # Application Expo (Android / iOS)
-├── client/                # Application web React/Vite
-│   ├── public/            # manifeste de routes et assets statiques
-│   └── src/               # écrans, design system et catalogue de démonstration
-├── server/                # Express, tRPC, auth et services métier
-│   └── modules/           # catalogue et réservation anti-chevauchement
-├── drizzle/               # schéma et migrations SQL
-├── database/seeds/        # seed de démonstration séparé
-├── documentation/         # architecture, API, guides, déploiement, coûts
-├── infrastructure/       # Docker Compose d’exemple et notes d’exploitation
-├── scripts/               # procédures de sauvegarde et migration
-├── server/**/*.test.ts    # suites métier, auth et sécurité ; tests UI/API transverses à ajouter
-├── .github/workflows/     # contrôle continu
-└── plan.md / TODO.md      # décisions et suivi d’avancement
+client/src/pages/     Kofi.tsx (site public et client), Features.tsx (favoris, fidélité, cartes cadeaux, aide),
+                      Pro.tsx (espace pro), Admin.tsx (back-office), SuperAdmin.tsx (super-administration)
+server/modules/       logique métier : booking, catalog, staff, offpeak, loyalty, giftcards, favorites,
+                      payments/, admin, superadmin, passwordAuth, reviews, portfolio…
+server/routers.ts     toutes les procédures tRPC et leurs contrôles d’accès
+shared/permissions.ts rôles et permissions (partagés client / serveur)
+drizzle/              schéma et migrations SQL
+scripts/              seed de démo, création de comptes, changement de mot de passe
+apps/mobile/          application Expo
+documentation/        architecture, API, intégrations, déploiement
 ```
 
-## Installation
+## Avant une mise en production
 
-Prérequis : Node.js 22, Corepack et pnpm 10.18.0.
+- Brancher un vrai prestataire Mobile Money (MTN / Orange) et ses webhooks.
+- Ajouter l’envoi d’e-mails et de SMS (confirmation, rappel, mot de passe oublié).
+- Remplacer les comptes et le catalogue de démonstration, et choisir des mots de passe forts.
+- Générer de vrais secrets, utiliser un utilisateur de base dédié, activer HTTPS et des sauvegardes.
+- Faire valider juridiquement les pages légales (CGU, confidentialité).
 
-```bash
-corepack enable
-corepack prepare pnpm@10.18.0 --activate
-pnpm install
-cp .env.example .env
-```
+L’état détaillé est suivi dans `documentation/release-status.md` et `TODO.md`.
 
-Renseigner ensuite les variables utiles à l’environnement. `DATABASE_URL` est nécessaire pour les migrations et les fonctions persistées. Les clés Stripe, SMS, email, cartographie et stockage sont volontairement vides : elles doivent être obtenues auprès des prestataires choisis et ajoutées par secret manager, jamais dans Git.
+## Sécurité
 
-## Développement et qualité
+Aucun secret n’est versionné : `.env`, `COMPTES-KOFI.local.md` et les journaux locaux sont ignorés par Git. Pour signaler une faille, ouvrez une issue sans détail exploitable et demandez un contact privé.
 
-```bash
-pnpm dev        # Express + Vite, PORT fourni par l’environnement ou 3000
-pnpm check      # TypeScript sans émission
-pnpm test       # Vitest (ajouter TEST_DATABASE_URL pour les tests sur base réelle)
-pnpm build      # Vite puis bundle Express
-pnpm start      # serveur de production après build
-```
+## Licence
 
-La CI GitHub Actions exécute `pnpm install --frozen-lockfile`, `pnpm check`, `pnpm test` et `pnpm build` sur les branches `main`, `develop` et les pull requests vers `main`. Une version ne doit pas être déployée si l’un de ces contrôles échoue.
-
-## Performance et données mobiles
-
-Le shell HTML affiche immédiatement un état de chargement, les polices externes ont été retirées, le CSS global inutilisé a été supprimé et les assets fingerprintés sont mis en cache un an en production. Le bundle initial mesuré passe d’environ 583 Ko bruts à 379 Ko bruts ; le détail, les limites et les méthodes de mesure sont documentés dans [`documentation/performance.md`](documentation/performance.md). Les scores LCP/INP/CLS ne sont pas inventés : ils nécessitent encore un outil Web Vitals reproductible.
-
-## Base de données
-
-Le schéma métier se trouve dans `drizzle/schema.ts`. La migration additive `drizzle/0001_kofi_core.sql` crée les profils professionnels, prestations, disponibilités, réservations, éléments de réservation, historique, portfolios, promotions et audit logs sans supprimer la table `users` existante.
-
-```bash
-pnpm db:migrate  # applique les migrations déjà commitées
-pnpm db:push     # génère puis applique une évolution après revue
-```
-
-`pnpm db:seed` charge le catalogue de démonstration (4 professionnels, 12 prestations, 60 jours d’horaires). Il est idempotent et refuse de tourner en production sans `--force`. La base gérée de développement et celle de publication peuvent partager des données : ne pas lancer de seed ou de suppression destructive sans sauvegarde et validation.
-
-## Fonctionnalités livrées
-
-Le parcours web permet de rechercher par texte, ville, spécialité, quartier, mode et budget, de trier par note ou popularité, d’ouvrir un profil, de sélectionner plusieurs prestations et de créer une demande via `booking.create` avec référence unique, durée, total, fuseau et statut « en attente ». Une connexion est requise avant l’enregistrement ; le brouillon est conservé localement pendant le retour OAuth. Les annulations demandent une confirmation et appellent `booking.cancel`. Le service serveur refuse deux réservations qui se chevauchent pour un même professionnel et protège les réservations confirmées dans sa logique métier.
-
-Les écrans professionnel et administrateur sont structurés avec métriques, planning, validation, modération et journal d’audit explicitement signalés comme maquettes tant que les comptes et permissions réels ne sont pas branchés. Les états chargement, vide, erreur, succès, réservation en attente, connexion et absence de paiement sont visibles dans l’interface.
-
-## API
-
-Les procédures tRPC sont documentées dans `documentation/api.md`. Les principales sont `catalog.search`, `catalog.professional`, `booking.create`, `booking.mine`, `booking.cancel` et `admin.overview`. L’autorisation est côté serveur : la procédure admin exige le rôle `admin`, et les procédures de réservation exigent une session. L’espace professionnel (`/professionnel`) et le back-office (`/admin`) sont chargés à la demande. `catalog.slots` renvoie les créneaux libres d’un jour. Les réservations sont persistées dans une transaction qui verrouille le professionnel. L’interface web n’a plus de données locales : catalogue, créneaux et historique viennent de l’API, et le brouillon de réservation ne garde que des identifiants pendant la connexion.
-
-## Site installable et hors connexion
-
-Le site est une PWA : on peut l’ajouter à l’écran d’accueil, et il s’ouvre sans réseau avec les profils déjà consultés (`client/public/sw.js`). Créneaux, réservations et données de compte ne sont jamais servis depuis le cache.
-
-## Mobile, paiements et services externes
-
-`apps/mobile` contient l’application Expo (SDK 57) branchée sur la même API : voir `apps/mobile/README.md` pour la lancer avec Expo Go et la publier avec EAS. Les builds Android/iOS ne sont pas prétendus produits dans cette livraison : ils nécessitent les comptes Expo, Google Play Console et Apple Developer. Le paiement Mobile Money/carte, SMS, email transactionnel, cartographie, stockage objet et monitoring nécessitent des prestataires, contrats et secrets réels. Aucun service payant n’a été souscrit.
-
-## Sauvegarde, restauration et déploiement
-
-Le Dockerfile construit `dist/public` et `dist/index.js` sur Node 22. `infrastructure/docker-compose.example.yml` fournit un MySQL local de développement. Les commandes de sauvegarde/restauration sont décrites dans `scripts/README.md` et `documentation/deployment.md` ; tester toute restauration dans un environnement isolé. Pour la production, choisir l’hébergement frontend/backend, la base managée, le stockage image, le domaine HTTPS, le monitoring et les notifications, puis renseigner les secrets via le gestionnaire de l’environnement.
-
-Avant mise en ligne : valider juridiquement les pages légales, connecter le paiement réel avec webhooks idempotents, activer l’upload modéré des portfolios, brancher notifications et cartographie, activer les comptes professionnels/admin, lancer une base de test isolée et obtenir les certificats développeur mobile. L’état détaillé est tenu dans `documentation/release-status.md` et `TODO.md`.
-
-## Licence et reprise
-
-Le dépôt est autonome et sous licence MIT dans son `package.json`. Un autre développeur peut reprendre le code avec les commandes ci-dessus sans dépendre d’une plateforme propriétaire, à l’exception des services explicitement documentés comme intégrations à configurer (OAuth de projet, base gérée éventuelle et stockage objet).
+MIT (voir `package.json`).
