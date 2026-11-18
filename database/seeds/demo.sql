@@ -1,0 +1,3 @@
+-- Le seed de démonstration est désormais écrit en TypeScript pour générer des horaires
+-- d’ouverture datés : voir server/modules/demoSeed.ts et lancer `pnpm db:seed`.
+-- Ne jamais l’exécuter sur une base de production sans sauvegarde et validation.

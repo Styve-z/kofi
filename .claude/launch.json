@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set NODE_ENV=development&& pnpm exec tsx watch server/_core/index.ts"
+      ],
+      "port": 3000
+    }
+  ]
+}

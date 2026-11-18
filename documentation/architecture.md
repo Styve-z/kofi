@@ -1,0 +1,7 @@
+# Architecture
+
+KOFI est une application web React/Vite servie par Express. Le serveur expose une API tRPC sous `/api/trpc` et conserve l’authentification OAuth du starter avec cookie `webdev_app_session`, vérification JWT et permissions serveur. La base est MySQL-compatible via Drizzle ; le schéma est conçu pour être migré vers PostgreSQL en adaptant les types d’enum et le driver, sans changer les contrats produit.
+
+Le catalogue public est séparé des comptes et des réservations. Une réservation contient une référence unique, un instant de début et de fin, le fuseau, le mode, les prestations, le total et un journal d’événements. Le service écrit en base dans une transaction : il verrouille la ligne du professionnel, vérifie les plages d’ouverture et les indisponibilités, refuse les chevauchements (temps de préparation compris) et protège les réservations confirmées contre une annulation client. Les portfolios ne stockent pas de fichiers dans Git : l’index applicatif est modélisé pour conserver une clé objet stable et un statut de modération, mais l’upload et la modération ne sont pas encore actifs.
+
+La première interface web utilise un catalogue de test explicite, sans photos fictives. Les écrans client, professionnel et admin partagent le même design system mais les actions sensibles sont destinées aux procédures protégées. Le dossier `apps/mobile` fournit un point de reprise Expo séparé.
