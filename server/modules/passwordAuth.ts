@@ -103,7 +103,8 @@ export async function registerWithPassword(db: Database, input: { name: string; 
     if ((error as { code?: string })?.code === "ER_DUP_ENTRY" || String((error as { cause?: { code?: string } })?.cause?.code) === "ER_DUP_ENTRY") throw new BusinessError("EMAIL_TAKEN");
     throw error;
   }
-  return { token: await sessionFor({ openId, name }) };
+  const [created] = await db.select({ id: users.id }).from(users).where(eq(users.openId, openId)).limit(1);
+  return { token: await sessionFor({ openId, name }), userId: created.id };
 }
 
 export async function loginWithPassword(db: Database, input: { email: string; password: string; ip?: string }, now = Date.now()) {

@@ -51,7 +51,7 @@ async function main() {
       let userId: number;
       if (!existing) {
         password = generatePassword(account.length);
-        await db.insert(users).values({ openId: `pwd_${randomUUID().replace(/-/g, "")}`, name: account.name, email: account.email, passwordHash: await hashPassword(password), loginMethod: "password", role: account.role });
+        await db.insert(users).values({ openId: `pwd_${randomUUID().replace(/-/g, "")}`, name: account.name, email: account.email, passwordHash: await hashPassword(password), loginMethod: "password", role: account.role, emailVerifiedAt: new Date() });
         const [created] = await db.select({ id: users.id }).from(users).where(eq(users.email, account.email)).limit(1);
         userId = created.id;
         console.log(`Créé : ${account.label} (${account.email})`);

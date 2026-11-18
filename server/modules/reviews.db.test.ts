@@ -106,11 +106,12 @@ describe.skipIf(!url)("avis et notifications (base réelle)", () => {
       expect((await listNotifications(db, client.id))[0]).toMatchObject({ type: "booking.cancelled", body: expect.stringContaining("Client injoignable") });
       expect((await listNotifications(db, pro.id))[0].type).toBe("booking.admin_cancelled");
 
-      expect(await unreadCount(db, client.id)).toBe(3);
+      // 3 changements de statut + 3 accusés « demande envoyée » (un par réservation créée).
+      expect(await unreadCount(db, client.id)).toBe(6);
       const [first] = await listNotifications(db, client.id);
       expect(await markRead(db, other.id, first.id)).toEqual({ unread: 0 });
-      expect(await unreadCount(db, client.id)).toBe(3);
-      expect(await markRead(db, client.id, first.id)).toEqual({ unread: 2 });
+      expect(await unreadCount(db, client.id)).toBe(6);
+      expect(await markRead(db, client.id, first.id)).toEqual({ unread: 5 });
       expect(await markRead(db, client.id)).toEqual({ unread: 0 });
     });
 

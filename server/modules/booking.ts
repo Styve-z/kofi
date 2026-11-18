@@ -7,7 +7,7 @@ import { BusinessError } from "./errors";
 import { getPaymentSettings } from "./payments/config";
 import { onBookingClosed, startRefund } from "./payments/index";
 import { evaluatePromo, normalizeCode } from "./promo";
-import { notifyProfessional } from "./notifications";
+import { notify, notifyProfessional, smsToCustomer } from "./notifications";
 import { extendHorizon } from "./schedule";
 import { formatDoualaSlot } from "./time";
 import { activeRules, offpeakDiscountXaf, offpeakPercentAt } from "./offpeak";
@@ -188,6 +188,9 @@ export async function createBooking(db: Database, input: CreateBookingInput, now
     await tx.insert(bookingItems).values(selection.services.map((service) => ({ bookingId: inserted.id, serviceId: service.id, serviceName: service.name, durationMinutes: service.durationMinutes, priceXaf: service.priceXaf })));
     await tx.insert(bookingEvents).values({ bookingId: inserted.id, actorUserId: input.customerUserId, fromStatus: null, toStatus: "pending", note: "Demande créée par le client" });
     await notifyProfessional(tx, professional.id, { type: "booking.created", title: "Nouvelle demande de rendez-vous", body: `${customerName} · ${selection.services.map((service) => service.name).join(" + ")} · ${formatDoualaSlot(starts)}`, link: "/professionnel" });
+    // Accusé de réception pour le client (site + e-mail si vérifié + SMS).
+    await notify(tx, { userId: input.customerUserId, type: "booking.requested", title: "Demande de rendez-vous envoyée", body: `${professional.displayName} · ${formatDoualaSlot(starts)} · réf. ${ref}. Vous serez prévenu dès la réponse du professionnel.`, link: "/mes-reservations" });
+    await smsToCustomer(tx, { reference: ref, startsAt: starts, customerPhone }, "created", professional.displayName);
     return ref;
   });
 
@@ -257,7 +260,7 @@ export async function rescheduleBooking(db: Database, input: { reference: string
     if (!free.length) throw new BusinessError("SLOT_UNAVAILABLE");
     // Un paiement non encore fait est remis à zéro : il sera redemandé quand le professionnel acceptera le nouveau créneau.
     const resetPayment = booking.paymentStatus === "unpaid" ? { paymentStatus: "none" as const, amountDueXaf: 0 } : {};
-    await tx.update(bookings).set({ startsAt: starts, endsAt: ends, staffMemberId: free[0], status: "pending", ...resetPayment }).where(eq(bookings.id, booking.id));
+    await tx.update(bookings).set({ startsAt: starts, endsAt: ends, staffMemberId: free[0], status: "pending", reminderSentAt: null, ...resetPayment }).where(eq(bookings.id, booking.id));
     await tx.insert(bookingEvents).values({ bookingId: booking.id, actorUserId: input.customerUserId, fromStatus: booking.status, toStatus: "pending", note: `Déplacé par le client : ${formatDoualaSlot(booking.startsAt)} → ${formatDoualaSlot(starts)}` });
     await notifyProfessional(tx, booking.professionalId, { type: "booking.rescheduled", title: "Rendez-vous déplacé par le client", body: `${booking.customerName} · ${formatDoualaSlot(booking.startsAt)} → ${formatDoualaSlot(starts)} · à accepter`, link: "/professionnel" });
   });

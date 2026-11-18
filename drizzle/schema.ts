@@ -14,6 +14,8 @@ export const users = mysqlTable("users", {
   status: mysqlEnum("status", ["active", "suspended"]).default("active").notNull(),
   // Les sessions ouvertes avant cette date sont refusées (mis à jour quand le mot de passe est réinitialisé).
   sessionsValidAfter: timestamp("sessionsValidAfter"),
+  // Adresse e-mail confirmée par le lien reçu : les e-mails de notification ne partent que vers une adresse vérifiée.
+  emailVerifiedAt: timestamp("emailVerifiedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -106,6 +108,8 @@ export const bookings = mysqlTable("bookings", {
   giftCardXaf: int("giftCardXaf").default(0).notNull(),
   // Points fidélité déjà crédités pour ce rendez-vous (évite un double crédit).
   loyaltyEarned: int("loyaltyEarned").default(0).notNull(),
+  // Rappel « la veille » déjà envoyé (une seule fois par rendez-vous et par horaire).
+  reminderSentAt: timestamp("reminderSentAt"),
   status: mysqlEnum("status", ["pending", "confirmed", "refused", "cancelled", "completed", "no_show"]).default("pending").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -336,6 +340,35 @@ export const passwordResetTokens = mysqlTable("password_reset_tokens", {
   usedAt: timestamp("usedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [index("password_reset_user_idx").on(table.userId)]);
+
+/** Liens de vérification de l’adresse e-mail (même principe que la réinitialisation : empreinte seule, 48 h, usage unique). */
+export const emailVerificationTokens = mysqlTable("email_verification_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("email_verification_user_idx").on(table.userId)]);
+
+/**
+ * File d’envoi des e-mails et SMS. Les lignes sont écrites dans la transaction de l’événement
+ * (rien ne part pour une action annulée) puis envoyées en arrière-plan, avec nouvelles tentatives.
+ */
+export const messageOutbox = mysqlTable("message_outbox", {
+  id: int("id").autoincrement().primaryKey(),
+  channel: mysqlEnum("channel", ["email", "sms"]).notNull(),
+  recipient: varchar("recipient", { length: 320 }).notNull(),
+  subject: varchar("subject", { length: 200 }),
+  body: text("body").notNull(),
+  kind: varchar("kind", { length: 64 }).notNull(),
+  status: mysqlEnum("status", ["pending", "sending", "sent", "failed"]).default("pending").notNull(),
+  attempts: int("attempts").default(0).notNull(),
+  lastError: varchar("lastError", { length: 255 }),
+  sendAfter: timestamp("sendAfter").defaultNow().notNull(),
+  sentAt: timestamp("sentAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("message_outbox_status_idx").on(table.status, table.sendAfter)]);
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;

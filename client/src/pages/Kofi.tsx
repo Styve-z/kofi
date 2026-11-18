@@ -822,7 +822,7 @@ function LoginPage() {
   };
   const switchMode = (next: "login" | "register") => { setMode(next); login.reset(); register.reset(); };
 
-  if (auth.isAuthenticated) return <main className="kofi-container kofi-page"><div className="kofi-success"><div className="success-icon"><UserRound size={28} /></div><span className="kofi-eyebrow">{ACCOUNT_LABELS[account.kind]}</span><h1>{`Bonjour ${auth.user?.name || ""}`}</h1><p>{ACCOUNT_INTROS[account.kind]}</p>
+  if (auth.isAuthenticated) return <main className="kofi-container kofi-page"><div className="kofi-success"><div className="success-icon"><UserRound size={28} /></div><span className="kofi-eyebrow">{ACCOUNT_LABELS[account.kind]}</span><h1>{`Bonjour ${auth.user?.name || ""}`}</h1><p>{ACCOUNT_INTROS[account.kind]}</p><VerifyEmailNotice />
     <div className="kofi-account-links">
       {account.kind === "client" && <>
         <Link href="/mes-reservations"><CalendarDays size={18} /><span>Mes réservations</span></Link>
@@ -865,6 +865,36 @@ function LoginPage() {
     {manusConfigured && <button type="button" className="kofi-button outline" onClick={() => safeLogin()}>Continuer avec Manus</button>}
     <p className="kofi-note" style={{ justifyContent: "center" }}><ShieldCheck size={15} /> Mot de passe chiffré, aucune donnée bancaire stockée ici.</p>
   </div></main>;
+}
+
+/** Lien reçu à l’inscription : confirme l’adresse e-mail. */
+function VerifyEmailPage() {
+  const [token] = useState(() => new URLSearchParams(window.location.search).get("token") ?? "");
+  const utils = trpc.useUtils();
+  const verify = trpc.auth.verifyEmail.useMutation({ onSuccess: () => { void utils.auth.me.invalidate(); } });
+  useEffect(() => {
+    if (window.location.search) window.history.replaceState(null, "", "/verifier-email");
+    if (token) verify.mutate({ token });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const shell = (children: ReactNode) => <main className="kofi-container kofi-page"><div className="kofi-success" style={{ maxWidth: 440 }}><div className="success-icon">{verify.isSuccess ? <CheckCircle2 size={28} /> : <ShieldCheck size={28} />}</div><span className="kofi-eyebrow">Votre espace KOFI</span>{children}</div></main>;
+  if (!token || verify.isError) return shell(<><h1>Lien expiré ou déjà utilisé</h1><p>Ce lien n’est plus valable (48 h, usage unique). Connectez-vous puis demandez un nouveau lien depuis « Mon compte ».</p><div className="kofi-hero-actions" style={{ justifyContent: "center" }}><Link href="/connexion" className="kofi-button primary small">Mon compte</Link></div></>);
+  if (!verify.isSuccess) return shell(<LoadingBlock label="Vérification de votre adresse…" />);
+  return shell(<><h1>Adresse e-mail confirmée</h1><p>Merci ! Vous recevrez désormais par e-mail vos confirmations et rappels de rendez-vous.</p><div className="kofi-hero-actions" style={{ justifyContent: "center" }}><Link href="/" className="kofi-button primary small">Continuer</Link></div></>);
+}
+
+/** Bandeau du compte tant que l’adresse n’est pas confirmée. */
+function VerifyEmailNotice() {
+  const auth = useAuth();
+  const resend = trpc.auth.resendVerification.useMutation();
+  const user = auth.user as { email?: string | null; emailVerified?: boolean } | null;
+  if (!user?.email || user.emailVerified !== false) return null;
+  return <div className="kofi-alert" role="status" style={{ textAlign: "left", background: "#fff7ec", borderColor: "#f0d2b0", color: "#6d4520" }}>
+    <ShieldCheck size={16} /> <span>Confirmez votre adresse <strong>{user.email}</strong> pour recevoir vos confirmations et rappels par e-mail.{" "}
+      {resend.isSuccess ? <strong>Lien envoyé.</strong> : <button type="button" className="kofi-link" disabled={resend.isPending} onClick={() => resend.mutate()}>{resend.isPending ? "Envoi…" : "Renvoyer le lien"}</button>}
+      {resend.error && <> · {resend.error.message === "VERIFY_RATE_LIMIT" ? "Trop de demandes, réessayez dans une heure." : "Envoi impossible, réessayez."}</>}
+    </span>
+  </div>;
 }
 
 /** Étape 1 : demander un lien par e-mail. La réponse est la même que le compte existe ou non. */
@@ -957,6 +987,7 @@ export default function KofiApp() {
   else if (page === "/superadmin") content = <Suspense fallback={<main className="kofi-container kofi-page"><LoadingBlock /></main>}><SuperAdminPage /></Suspense>;
   else if (page === "/connexion") content = <LoginPage />;
   else if (page === "/mot-de-passe-oublie") content = <ForgotPasswordPage />;
+  else if (page === "/verifier-email") content = <VerifyEmailPage />;
   else if (page === "/mot-de-passe/nouveau") content = <ResetPasswordPage />;
   else if (page === "/connexion-app") content = <AppLoginPage />;
   else if (page === "/notifications") content = <NotificationsPage />;

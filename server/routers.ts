@@ -6,6 +6,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router, staffProcedure, superAdminProcedure } from "./_core/trpc";
 import { createTeamAccount, getPlatformSummary, listTeam, SUPERADMIN_PASSWORD_MIN } from "./modules/superadmin";
 import { checkResetToken, requestPasswordReset, resetPassword } from "./modules/passwordReset";
+import { publicUser, resendVerificationEmail, sendVerificationEmail, verifyEmail } from "./modules/emailVerification";
 import { can, PERMISSIONS, type Permission } from "@shared/permissions";
 import { getDb, type Database } from "./db";
 import { cancelBooking, createBooking, getBookingsForUser, rescheduleBooking, rescheduleSlots } from "./modules/booking";
@@ -56,13 +57,14 @@ const serviceIds = z.array(z.string().trim().min(1).max(80)).min(1).max(10);
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query((opts) => opts.ctx.user),
+    me: publicProcedure.query((opts) => publicUser(opts.ctx.user)),
     /** Inscription e-mail + mot de passe : crée le compte et ouvre directement la session. */
     register: publicProcedure
       .input(z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().max(320), password: z.string().min(PASSWORD_MIN).max(PASSWORD_MAX) }))
       .mutation(({ ctx, input }) => withDb(async (db) => {
-        const { token } = await registerWithPassword(db, input);
+        const { token, userId } = await registerWithPassword(db, input);
         ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: ONE_YEAR_MS });
+        await sendVerificationEmail(db, userId);
         return { success: true } as const;
       })),
     login: publicProcedure
@@ -77,6 +79,9 @@ export const appRouter = router({
     requestPasswordReset: publicProcedure
       .input(z.object({ email: z.string().trim().email().max(320) }))
       .mutation(({ ctx, input }) => withDb((db) => requestPasswordReset(db, { email: input.email, ip: ctx.req.ip }))),
+    /** Vérification de l’adresse e-mail (lien reçu à l’inscription). */
+    verifyEmail: publicProcedure.input(z.object({ token: z.string().max(100) })).mutation(({ input }) => withDb((db) => verifyEmail(db, input.token))),
+    resendVerification: protectedProcedure.mutation(({ ctx }) => withDb((db) => resendVerificationEmail(db, ctx.user))),
     checkResetToken: publicProcedure.input(z.object({ token: z.string().max(100) })).query(({ input }) => withDb((db) => checkResetToken(db, input.token))),
     resetPassword: publicProcedure
       .input(z.object({ token: z.string().max(100), password: z.string().min(PASSWORD_MIN).max(PASSWORD_MAX) }))
