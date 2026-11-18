@@ -10,12 +10,14 @@ import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeom
  * se met en pause hors écran, et ne s’affiche pas si WebGL est indisponible.
  */
 
-const GOLD = new THREE.MeshPhysicalMaterial({ color: 0xc9844f, metalness: 1, roughness: 0.26, clearcoat: 0.6 }); // cuivre
-const STEEL = new THREE.MeshPhysicalMaterial({ color: 0xdfe3e6, metalness: 1, roughness: 0.18 });
-const DARK_STEEL = new THREE.MeshPhysicalMaterial({ color: 0x8d949a, metalness: 1, roughness: 0.32 });
-const BODY = new THREE.MeshPhysicalMaterial({ color: 0x141c2e, metalness: 0.35, roughness: 0.38, clearcoat: 1, clearcoatRoughness: 0.18 });
-const ACCENT = new THREE.MeshPhysicalMaterial({ color: 0xd08a52, metalness: 0.1, roughness: 0.35, clearcoat: 0.8 });
-const CORD = new THREE.MeshStandardMaterial({ color: 0x151211, roughness: 0.55 });
+// Tondeuse filaire professionnelle : coque rouge métallisée vernie, châssis noir, lame chromée.
+const STEEL = new THREE.MeshPhysicalMaterial({ color: 0xe4e7ea, metalness: 1, roughness: 0.16 });
+const DARK_STEEL = new THREE.MeshPhysicalMaterial({ color: 0x9aa1a7, metalness: 1, roughness: 0.3 });
+const BODY = new THREE.MeshPhysicalMaterial({ color: 0x8c1016, metalness: 0.55, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08, sheen: 0.4, sheenColor: new THREE.Color(0xff5a4e) });
+const BODY_DARK = new THREE.MeshPhysicalMaterial({ color: 0x5e0a0f, metalness: 0.5, roughness: 0.4, clearcoat: 0.8 });
+const CHASSIS = new THREE.MeshPhysicalMaterial({ color: 0x111214, metalness: 0.2, roughness: 0.45, clearcoat: 0.4 });
+const SCREW = new THREE.MeshPhysicalMaterial({ color: 0x2a2c30, metalness: 0.9, roughness: 0.35 });
+const CORD = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.5 });
 const HAIR = new THREE.MeshStandardMaterial({ color: 0x2b1b14, roughness: 0.8 });
 
 function logoTexture() {
@@ -23,8 +25,8 @@ function logoTexture() {
   canvas.width = 256;
   canvas.height = 96;
   const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#e3a878";
-  ctx.font = "700 64px Fraunces, Georgia, serif";
+  ctx.fillStyle = "#e9dcd6";
+  ctx.font = "700 60px Fraunces, Georgia, serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("KOFI", 128, 52);
@@ -65,71 +67,118 @@ function blade(width: number, teeth: number, material: THREE.Material, toothHeig
 function buildClipper(logo: THREE.Texture) {
   const clipper = new THREE.Group();
 
-  // Corps : profil tourné (poignée galbée), aplati en profondeur.
-  const shell = new THREE.Group();
-  shell.scale.set(1, 1, 0.64);
+  // Profil de la poignée : large sous la tête, taille légèrement marquée, bout arrondi.
   const profile = [
-    [0, -1.62], [0.34, -1.6], [0.47, -1.5], [0.52, -1.2], [0.55, -0.6], [0.6, 0], [0.66, 0.5], [0.72, 0.92], [0.7, 1.02], [0, 1.04],
+    [0, -1.66], [0.3, -1.64], [0.44, -1.55], [0.5, -1.35], [0.5, -0.95], [0.52, -0.5], [0.58, 0], [0.64, 0.45], [0.68, 0.8], [0.66, 0.98], [0, 1.0],
   ].map(([x, y]) => new THREE.Vector2(x, y));
-  shell.add(new THREE.Mesh(new THREE.LatheGeometry(profile, 64), BODY));
-  // Bagues dorées : bas, haut, et une zone striée pour la prise en main.
-  const ring = (radius: number, y: number, tube = 0.035, material: THREE.Material = GOLD) => {
-    const mesh = new THREE.Mesh(new THREE.TorusGeometry(radius, tube, 12, 64), material);
-    mesh.rotation.x = Math.PI / 2;
-    mesh.position.y = y;
-    shell.add(mesh);
-  };
-  ring(0.49, -1.45, 0.045);
-  ring(0.71, 0.95, 0.05);
-  for (let i = 0; i < 7; i++) ring(0.53 + i * 0.004, -1.05 + i * 0.09, 0.018, DARK_STEEL);
+
+  // Châssis noir (dessous), un peu plus large : il dépasse en liseré autour de la coque rouge.
+  const chassis = new THREE.Mesh(new THREE.LatheGeometry(profile, 72), CHASSIS);
+  chassis.scale.set(1.06, 1.02, 0.46);
+  chassis.position.z = -0.1;
+  clipper.add(chassis);
+
+  // Coque rouge métallisée, bombée sur le dessus.
+  const shell = new THREE.Mesh(new THREE.LatheGeometry(profile, 72), BODY);
+  shell.scale.set(1, 1, 0.5);
+  shell.position.z = 0.04;
   clipper.add(shell);
+  const front = 0.6 * 0.5 + 0.04; // surface avant approximative de la coque
 
-  // Tête : bloc métallique qui porte les lames.
-  const head = new THREE.Mesh(new RoundedBoxGeometry(1.5, 0.42, 0.56, 4, 0.1), GOLD);
-  head.position.y = 1.2;
-  clipper.add(head);
+  // Nervure centrale (le « dos » galbé de la coque) et deux lignes de style.
+  const spine = new THREE.Mesh(new RoundedBoxGeometry(0.5, 2.0, 0.08, 4, 0.04), BODY);
+  spine.position.set(-0.04, -0.15, front - 0.02);
+  spine.rotation.z = 0.04;
+  clipper.add(spine);
+  for (const [x, rot] of [[-0.36, 0.1], [0.3, -0.06]] as const) {
+    const line = new THREE.Mesh(new RoundedBoxGeometry(0.03, 1.7, 0.03, 2, 0.012), BODY_DARK);
+    line.position.set(x, -0.1, front - 0.03);
+    line.rotation.z = rot;
+    clipper.add(line);
+  }
 
-  const fixedBlade = blade(1.56, 24, STEEL, 0.17);
-  fixedBlade.position.set(0, 1.45, -0.03);
-  clipper.add(fixedBlade);
-  const movingBlade = blade(1.42, 22, DARK_STEEL, 0.12);
-  movingBlade.position.set(0, 1.44, 0.07);
-  clipper.add(movingBlade);
+  // Encoches de prise en main, gravées sur la coque le long du bord droit.
+  for (let i = 0; i < 6; i++) {
+    const y = -0.85 + i * 0.22;
+    const notch = new THREE.Mesh(new RoundedBoxGeometry(0.13, 0.03, 0.03, 2, 0.01), BODY_DARK);
+    notch.position.set(0.3 + i * 0.012, y, front - 0.04);
+    notch.rotation.z = 0.32;
+    clipper.add(notch);
+  }
 
-  // Levier de réglage (sur le côté de la tête).
-  const pivot = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.08, 24), DARK_STEEL);
-  pivot.rotation.z = Math.PI / 2;
-  pivot.position.set(0.79, 1.18, 0);
-  clipper.add(pivot);
-  const lever = new THREE.Mesh(new RoundedBoxGeometry(0.06, 0.62, 0.12, 2, 0.03), GOLD);
-  lever.position.set(0.84, 0.92, 0.06);
-  lever.rotation.z = 0.22;
-  clipper.add(lever);
+  // Quatre vis noires sur la coque.
+  for (const [x, y] of [[-0.5, 0.82], [0.52, 0.8], [-0.34, -1.4], [0.36, -1.38]] as const) {
+    const screw = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.03, 20), SCREW);
+    screw.rotation.x = Math.PI / 2;
+    screw.position.set(x, y, front - 0.06 - Math.abs(y) * 0.02);
+    clipper.add(screw);
+    const slot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.012, 0.035), CHASSIS);
+    slot.position.copy(screw.position);
+    slot.position.z += 0.01;
+    slot.rotation.z = 0.6;
+    clipper.add(slot);
+  }
 
-  // Interrupteur orange + logo gravé sur la face avant.
-  const front = 0.6 * 0.64;
-  const switchBase = new THREE.Mesh(new RoundedBoxGeometry(0.26, 0.5, 0.08, 3, 0.035), DARK_STEEL);
-  switchBase.position.set(0, 0.2, front + 0.005);
-  clipper.add(switchBase);
-  const switchKnob = new THREE.Mesh(new RoundedBoxGeometry(0.18, 0.2, 0.1, 3, 0.04), ACCENT);
-  switchKnob.position.set(0, 0.3, front + 0.05);
-  clipper.add(switchKnob);
-  const led = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 16), new THREE.MeshBasicMaterial({ color: 0x7dffb2 }));
-  led.position.set(0, -0.12, front + 0.02);
-  clipper.add(led);
-  const logoPlane = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.23), new THREE.MeshBasicMaterial({ map: logo, transparent: true }));
-  logoPlane.position.set(0, -0.48, 0.56 * 0.64 + 0.012);
+  // Inscription discrète sur la coque.
+  const logoPlane = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.19), new THREE.MeshBasicMaterial({ map: logo, transparent: true, opacity: 0.9 }));
+  logoPlane.position.set(-0.04, 0.45, front + 0.025);
+  logoPlane.rotation.z = Math.PI / 2;
   clipper.add(logoPlane);
 
-  // Cordon qui sort par le bas.
-  const cordPath = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0, -1.6, 0), new THREE.Vector3(0, -1.95, 0.05), new THREE.Vector3(-0.35, -2.35, 0.2),
-    new THREE.Vector3(-1.1, -2.45, 0.1), new THREE.Vector3(-1.9, -2.2, -0.2), new THREE.Vector3(-2.6, -2.5, -0.4),
-  ]);
-  clipper.add(new THREE.Mesh(new THREE.TubeGeometry(cordPath, 80, 0.055, 12, false), CORD));
-  const strain = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.14, 0.32, 24), CORD);
-  strain.position.y = -1.74;
+  // Tête : support noir des lames.
+  const head = new THREE.Mesh(new RoundedBoxGeometry(1.42, 0.36, 0.5, 4, 0.08), CHASSIS);
+  head.position.set(0, 1.12, -0.04);
+  clipper.add(head);
+
+  // Lames chromées : peigne fixe (grandes dents) et lame mobile.
+  const fixedBlade = blade(1.5, 26, STEEL, 0.2);
+  fixedBlade.position.set(0, 1.33, -0.05);
+  clipper.add(fixedBlade);
+  const movingBlade = blade(1.36, 24, DARK_STEEL, 0.13);
+  movingBlade.position.set(0, 1.32, 0.06);
+  clipper.add(movingBlade);
+  const bladeScrew = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.04, 20), STEEL);
+  bladeScrew.rotation.x = Math.PI / 2;
+  bladeScrew.position.set(-0.45, 1.22, 0.16);
+  clipper.add(bladeScrew);
+
+  // Levier de coupe noir sur le côté gauche de la tête.
+  const pivot = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.08, 24), CHASSIS);
+  pivot.rotation.z = Math.PI / 2;
+  pivot.position.set(-0.74, 1.02, -0.02);
+  clipper.add(pivot);
+  const lever = new THREE.Mesh(new RoundedBoxGeometry(0.07, 0.7, 0.13, 2, 0.03), CHASSIS);
+  lever.position.set(-0.8, 0.72, 0.02);
+  lever.rotation.z = -0.2;
+  clipper.add(lever);
+
+  // Molette striée sur le côté droit (réglage de puissance).
+  const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.08, 28), CHASSIS);
+  wheel.rotation.z = Math.PI / 2;
+  wheel.position.set(0.58, -0.42, -0.04);
+  clipper.add(wheel);
+  for (let i = 0; i < 10; i++) {
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.016, 0.03), SCREW);
+    const angle = (i / 10) * Math.PI * 2;
+    rib.position.set(0.58, -0.42 + Math.sin(angle) * 0.13, -0.04 + Math.cos(angle) * 0.13);
+    rib.rotation.x = -angle;
+    clipper.add(rib);
+  }
+
+  // Interrupteur : petit témoin sur le flanc (allumé = moteur en marche).
+  const led = new THREE.Mesh(new THREE.SphereGeometry(0.028, 16, 16), new THREE.MeshBasicMaterial({ color: 0x7dffb2 }));
+  led.position.set(0.5, -1.05, 0.02);
+  clipper.add(led);
+
+  // Cordon noir épais qui sort du talon.
+  const strain = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.13, 0.36, 24), CORD);
+  strain.position.set(0.05, -1.78, -0.04);
   clipper.add(strain);
+  const cordPath = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.05, -1.95, -0.04), new THREE.Vector3(0.12, -2.3, 0.05), new THREE.Vector3(-0.2, -2.6, 0.25),
+    new THREE.Vector3(-1.0, -2.65, 0.1), new THREE.Vector3(-1.8, -2.35, -0.2), new THREE.Vector3(-2.6, -2.6, -0.4),
+  ]);
+  clipper.add(new THREE.Mesh(new THREE.TubeGeometry(cordPath, 90, 0.06, 14, false), CORD));
 
   return { clipper, movingBlade, led };
 }
@@ -162,7 +211,7 @@ export default function Clipper3D({ className }: { className?: string }) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
     renderer.domElement.style.display = "block";
-    renderer.domElement.style.cursor = "pointer";
+    renderer.domElement.style.cursor = `url("/cursors/clipper-on.svg") 6 6, pointer`;
     renderer.domElement.setAttribute("aria-hidden", "true");
     host.appendChild(renderer.domElement);
 
@@ -178,7 +227,7 @@ export default function Clipper3D({ className }: { className?: string }) {
     const key = new THREE.DirectionalLight(0xffffff, 2.2);
     key.position.set(3, 4, 5);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0xd08a52, 2.4);
+    const rim = new THREE.DirectionalLight(0xffd2c4, 2.2);
     rim.position.set(-4, 2, -3);
     scene.add(rim);
 
@@ -333,7 +382,7 @@ export default function Clipper3D({ className }: { className?: string }) {
         const mesh = object as THREE.Mesh;
         if (mesh.geometry) mesh.geometry.dispose();
         const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
-        if (material && !Array.isArray(material) && ![GOLD, STEEL, DARK_STEEL, BODY, ACCENT, CORD, HAIR].includes(material as never)) material.dispose();
+        if (material && !Array.isArray(material) && ![STEEL, DARK_STEEL, BODY, BODY_DARK, CHASSIS, SCREW, CORD, HAIR].includes(material as never)) material.dispose();
       });
       logo.dispose();
       shadowTex.dispose();

@@ -696,3 +696,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .kofi-account-data h2 { font-size: 1.05rem; margin: 0 0 6px; }
 .kofi-account-data > p { color: #5d6779; font-size: 14px; }
 .kofi-account-delete { display: grid; gap: 12px; text-align: left; margin-top: 16px; padding: 16px; border: 1px solid #f1c7bd; background: #fff6f4; border-radius: 12px; }
+
+/* ---------- Curseur tondeuse (souris uniquement ; les écrans tactiles ne sont pas concernés) ---------- */
+@media (pointer: fine) {
+  html, body { cursor: url("/cursors/clipper.svg") 6 6, auto; }
+  html body :is(a, button, [role="button"], summary, select, label[for], .kofi-button, .kofi-slot, .kofi-chip, .kofi-adm-pill, .kofi-link, .kofi-link-button, .kofi-fav, input[type="checkbox"], input[type="radio"]) { cursor: url("/cursors/clipper-on.svg") 6 6, pointer; }
+  html body :is(input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), textarea, [contenteditable="true"]) { cursor: text; }
+  html body :is(button:disabled, .kofi-button:disabled) { cursor: not-allowed; }
+}
