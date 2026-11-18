@@ -857,6 +857,7 @@ function LoginPage() {
       {mode === "register" && <div className="kofi-form-group"><label htmlFor="auth-name">Nom complet</label><input id="auth-name" value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required minLength={2} maxLength={120} /></div>}
       <div className="kofi-form-group"><label htmlFor="auth-email">E-mail</label><input id="auth-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" inputMode="email" required maxLength={320} /></div>
       <div className="kofi-form-group"><label htmlFor="auth-password">Mot de passe{mode === "register" ? " (8 caractères min.)" : ""}</label><input id="auth-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={mode === "register" ? 8 : 1} maxLength={128} /></div>
+      {mode === "login" && <Link href="/mot-de-passe-oublie" className="kofi-link" style={{ justifySelf: "end", fontSize: 14 }}>Mot de passe oublié ?</Link>}
       {error && <div className="kofi-alert" role="alert" style={{ marginBottom: 0 }}><X size={16} /> {error}</div>}
       <button className="kofi-button primary" type="submit" disabled={pending}><LogIn size={16} /> {pending ? "Patientez…" : mode === "login" ? "Se connecter" : "Créer mon compte"}</button>
     </form>
@@ -864,6 +865,62 @@ function LoginPage() {
     {manusConfigured && <button type="button" className="kofi-button outline" onClick={() => safeLogin()}>Continuer avec Manus</button>}
     <p className="kofi-note" style={{ justifyContent: "center" }}><ShieldCheck size={15} /> Mot de passe chiffré, aucune donnée bancaire stockée ici.</p>
   </div></main>;
+}
+
+/** Étape 1 : demander un lien par e-mail. La réponse est la même que le compte existe ou non. */
+function ForgotPasswordPage() {
+  const [email, setEmail] = useState("");
+  const request = trpc.auth.requestPasswordReset.useMutation();
+  const submit = (event: FormEvent) => { event.preventDefault(); request.mutate({ email }); };
+  const error = request.error ? (request.error.message === "RESET_RATE_LIMIT" ? "Trop de demandes. Réessayez dans une heure." : request.error.data?.code === "BAD_REQUEST" ? "Saisissez une adresse e-mail valide." : "La demande n’a pas pu être envoyée. Réessayez dans un instant.") : null;
+  return <main className="kofi-container kofi-page"><div className="kofi-success" style={{ maxWidth: 440 }}>
+    <div className="success-icon"><ShieldCheck size={28} /></div>
+    <span className="kofi-eyebrow">Votre espace KOFI</span>
+    <h1>Mot de passe oublié</h1>
+    {request.isSuccess ? <>
+      <p>Si un compte KOFI existe pour <strong>{email.trim()}</strong>, un e-mail vient de partir avec un lien pour choisir un nouveau mot de passe. Le lien est valable 1 heure.</p>
+      <p className="kofi-note" style={{ justifyContent: "center" }}>Rien reçu ? Vérifiez vos courriers indésirables, puis refaites une demande.</p>
+      <div className="kofi-hero-actions" style={{ justifyContent: "center" }}><Link href="/connexion" className="kofi-button primary small">Retour à la connexion</Link><button type="button" className="kofi-button outline small" onClick={() => request.reset()}>Nouvelle demande</button></div>
+    </> : <>
+      <p>Indiquez l’e-mail de votre compte : nous vous enverrons un lien pour en choisir un nouveau.</p>
+      <form onSubmit={submit} style={{ display: "grid", gap: 14, textAlign: "left", marginTop: 22 }} noValidate>
+        <div className="kofi-form-group"><label htmlFor="forgot-email">E-mail</label><input id="forgot-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" inputMode="email" required maxLength={320} autoFocus /></div>
+        {error && <div className="kofi-alert" role="alert" style={{ marginBottom: 0 }}><X size={16} /> {error}</div>}
+        <button className="kofi-button primary" type="submit" disabled={request.isPending || !email.trim()}>{request.isPending ? "Envoi…" : "Recevoir le lien"}</button>
+      </form>
+      <p style={{ marginTop: 18 }}><Link href="/connexion" className="kofi-link">Retour à la connexion</Link></p>
+    </>}
+  </div></main>;
+}
+
+/** Étape 2 : depuis le lien reçu, choisir le nouveau mot de passe. */
+function ResetPasswordPage() {
+  // Le jeton est retiré de la barre d’adresse dès l’ouverture (historique, captures d’écran, partage).
+  const [token] = useState(() => new URLSearchParams(window.location.search).get("token") ?? "");
+  useEffect(() => { if (window.location.search) window.history.replaceState(null, "", "/mot-de-passe/nouveau"); }, []);
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const check = trpc.auth.checkResetToken.useQuery({ token }, { enabled: token.length > 0, retry: false });
+  const reset = trpc.auth.resetPassword.useMutation({ onSuccess: () => { setPassword(""); setConfirm(""); } });
+  const mismatch = confirm.length > 0 && password !== confirm;
+  const submit = (event: FormEvent) => { event.preventDefault(); if (password === confirm) reset.mutate({ token, password }); };
+  const invalid = !token || check.data?.valid === false || reset.error?.message === "RESET_TOKEN_INVALID";
+  const shell = (children: ReactNode) => <main className="kofi-container kofi-page"><div className="kofi-success" style={{ maxWidth: 440 }}><div className="success-icon"><ShieldCheck size={28} /></div><span className="kofi-eyebrow">Votre espace KOFI</span>{children}</div></main>;
+  if (token && check.isLoading) return shell(<LoadingBlock label="Vérification du lien…" />);
+  if (reset.isSuccess) return shell(<><h1>Mot de passe changé</h1><p>Votre nouveau mot de passe est enregistré. Par sécurité, toutes vos sessions ont été déconnectées : connectez-vous à nouveau.</p><div className="kofi-hero-actions" style={{ justifyContent: "center" }}><Link href="/connexion" className="kofi-button primary small"><LogIn size={15} /> Se connecter</Link></div></>);
+  if (invalid) return shell(<><h1>Lien expiré ou déjà utilisé</h1><p>Ce lien n’est plus valable : il expire après 1 heure et ne sert qu’une fois. Demandez-en un nouveau.</p><div className="kofi-hero-actions" style={{ justifyContent: "center" }}><Link href="/mot-de-passe-oublie" className="kofi-button primary small">Recevoir un nouveau lien</Link></div></>);
+  const error = reset.error ? (reset.error.data?.code === "BAD_REQUEST" || reset.error.message === "PASSWORD_WEAK" ? "Le mot de passe doit faire au moins 8 caractères." : "Le changement n’a pas pu être enregistré. Réessayez.") : null;
+  return shell(<>
+    <h1>Nouveau mot de passe</h1>
+    <p>Choisissez un mot de passe d’au moins 8 caractères, que vous n’utilisez pas ailleurs.</p>
+    <form onSubmit={submit} style={{ display: "grid", gap: 14, textAlign: "left", marginTop: 22 }} noValidate>
+      <div className="kofi-form-group"><label htmlFor="reset-password">Nouveau mot de passe</label><input id="reset-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" required minLength={8} maxLength={128} autoFocus /></div>
+      <div className="kofi-form-group"><label htmlFor="reset-confirm">Confirmez le mot de passe</label><input id="reset-confirm" type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="new-password" required maxLength={128} aria-invalid={mismatch} /></div>
+      {mismatch && <small role="alert" style={{ color: "#8a2c1c", fontWeight: 700 }}>Les deux mots de passe ne sont pas identiques.</small>}
+      {error && <div className="kofi-alert" role="alert" style={{ marginBottom: 0 }}><X size={16} /> {error}</div>}
+      <button className="kofi-button primary" type="submit" disabled={reset.isPending || password.length < 8 || password !== confirm}>{reset.isPending ? "Enregistrement…" : "Enregistrer le mot de passe"}</button>
+    </form>
+  </>);
 }
 
 function EmptyPage({ title, description, action, onAction }: { title: string; description: string; action?: string; onAction?: () => void }) {
@@ -899,6 +956,8 @@ export default function KofiApp() {
   else if (page === "/admin") content = <Suspense fallback={<main className="kofi-container kofi-page"><LoadingBlock /></main>}><AdminPage /></Suspense>;
   else if (page === "/superadmin") content = <Suspense fallback={<main className="kofi-container kofi-page"><LoadingBlock /></main>}><SuperAdminPage /></Suspense>;
   else if (page === "/connexion") content = <LoginPage />;
+  else if (page === "/mot-de-passe-oublie") content = <ForgotPasswordPage />;
+  else if (page === "/mot-de-passe/nouveau") content = <ResetPasswordPage />;
   else if (page === "/connexion-app") content = <AppLoginPage />;
   else if (page === "/notifications") content = <NotificationsPage />;
   else if (page === "/favoris") content = <FavoritesPage renderCard={(professional) => <ProfessionalCard professional={professional} />} />;

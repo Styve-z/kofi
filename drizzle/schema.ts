@@ -12,6 +12,8 @@ export const users = mysqlTable("users", {
   role: mysqlEnum("role", ["user", "support", "moderator", "admin", "superadmin"]).default("user").notNull(),
   // Un compte suspendu ne peut plus utiliser les procédures connectées.
   status: mysqlEnum("status", ["active", "suspended"]).default("active").notNull(),
+  // Les sessions ouvertes avant cette date sont refusées (mis à jour quand le mot de passe est réinitialisé).
+  sessionsValidAfter: timestamp("sessionsValidAfter"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -321,6 +323,19 @@ export const giftCards = mysqlTable("gift_cards", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   activatedAt: timestamp("activatedAt"),
 }, (table) => [index("gift_cards_purchaser_idx").on(table.purchaserUserId)]);
+
+/**
+ * Liens « mot de passe oublié » : seule l’empreinte SHA-256 du jeton est stockée.
+ * Valable 1 h, utilisable une seule fois ; une nouvelle demande annule les liens précédents.
+ */
+export const passwordResetTokens = mysqlTable("password_reset_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("password_reset_user_idx").on(table.userId)]);
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;

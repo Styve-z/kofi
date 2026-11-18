@@ -176,4 +176,21 @@ describe.skipIf(!url)("paiement Mobile Money en mode test (base réelle)", () =>
     const later = await confirmed({ startsAt: at(MONDAY, "15:00") });
     expect(await mine(later.reference)).toMatchObject({ paymentStatus: "none" });
   });
+
+  it("en mode test, l’équipe simule la réponse de l’opérateur pour un remboursement en attente", async () => {
+    const caller = (user: User) => appRouter.createCaller({ user, req: {} as TrpcContext["req"], res: {} as TrpcContext["res"] });
+    const created = await confirmed();
+    const { row } = await pay(created.reference);
+    await expect(caller(client).admin.payments.simulate({ paymentId: row.id, outcome: "succeeded" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await caller(admin).admin.payments.simulate({ paymentId: row.id, outcome: "succeeded" });
+    expect(await mine(created.reference)).toMatchObject({ paymentStatus: "paid" });
+    await cancelBooking(db, created.reference, client.id, NOW);
+    const [refund] = await db.select().from(payments).where(eq(payments.kind, "refund"));
+    expect(refund.status).toBe("pending");
+    await expect(caller(admin).admin.payments.simulate({ paymentId: refund.id, outcome: "succeeded" })).resolves.toMatchObject({ status: "succeeded" });
+    expect(await mine(created.reference)).toMatchObject({ paymentStatus: "refunded" });
+    // Hors mode test, le bouton est refusé.
+    setPaymentProviderForTests(null);
+    await expect(caller(admin).admin.payments.simulate({ paymentId: refund.id, outcome: "failed" })).rejects.toMatchObject({ message: "PAYMENTS_DISABLED" });
+  });
 });

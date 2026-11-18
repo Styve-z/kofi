@@ -124,3 +124,6 @@ ios/
 .manus-logs/
 .claude/settings.local.json
 uploads/
+
+# E-mails de développement (mode « log »)
+outbox/

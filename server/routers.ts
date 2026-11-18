@@ -5,6 +5,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router, staffProcedure, superAdminProcedure } from "./_core/trpc";
 import { createTeamAccount, getPlatformSummary, listTeam, SUPERADMIN_PASSWORD_MIN } from "./modules/superadmin";
+import { checkResetToken, requestPasswordReset, resetPassword } from "./modules/passwordReset";
 import { can, PERMISSIONS, type Permission } from "@shared/permissions";
 import { getDb, type Database } from "./db";
 import { cancelBooking, createBooking, getBookingsForUser, rescheduleBooking, rescheduleSlots } from "./modules/booking";
@@ -72,6 +73,14 @@ export const appRouter = router({
         // Le super-administrateur arrive directement sur son espace.
         return { success: true, home: role === "superadmin" ? "/superadmin" : null } as const;
       })),
+    /** Mot de passe oublié : répond toujours « envoyé », que le compte existe ou non. */
+    requestPasswordReset: publicProcedure
+      .input(z.object({ email: z.string().trim().email().max(320) }))
+      .mutation(({ ctx, input }) => withDb((db) => requestPasswordReset(db, { email: input.email, ip: ctx.req.ip }))),
+    checkResetToken: publicProcedure.input(z.object({ token: z.string().max(100) })).query(({ input }) => withDb((db) => checkResetToken(db, input.token))),
+    resetPassword: publicProcedure
+      .input(z.object({ token: z.string().max(100), password: z.string().min(PASSWORD_MIN).max(PASSWORD_MAX) }))
+      .mutation(({ input }) => withDb((db) => resetPassword(db, input))),
     logout: publicProcedure.mutation(({ ctx }) => { const cookieOptions = getSessionCookieOptions(ctx.req); ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 }); return { success: true } as const; }),
   }),
   catalog: router({

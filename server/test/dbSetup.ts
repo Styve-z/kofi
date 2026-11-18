@@ -20,7 +20,7 @@ export async function openTestDb(): Promise<Database> {
 
 /** Vide les tables métier puis recharge le catalogue de démonstration à partir du lundi de test. */
 export async function resetTestDb(db: Database) {
-  for (const table of ["favorites", "staff_members", "offpeak_rules", "loyalty_ledger", "gift_cards", "payouts", "payments", "portfolio_items", "notifications", "reviews", "mobile_login_codes", "reports", "promotions", "audit_logs", "booking_events", "booking_items", "bookings", "availability_slots", "service_catalog", "professional_profiles", "users"]) {
+  for (const table of ["password_reset_tokens", "favorites", "staff_members", "offpeak_rules", "loyalty_ledger", "gift_cards", "payouts", "payments", "portfolio_items", "notifications", "reviews", "mobile_login_codes", "reports", "promotions", "audit_logs", "booking_events", "booking_items", "bookings", "availability_slots", "service_catalog", "professional_profiles", "users"]) {
     await db.execute(sql.raw(`DELETE FROM \`${table}\``));
   }
   await seedDemo(db, { from: doualaDateTime(MONDAY, "00:00"), days: 14 });
