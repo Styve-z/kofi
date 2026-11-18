@@ -5,6 +5,7 @@ import { Empty, Failed, Loading, ReasonForm } from "./shared";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { assignableRoles, canManageAccount, ROLE_LABELS, type Role } from "@shared/permissions";
+import { TwoFactorLoginStep, TwoFactorSetup, useSecondFactorGate } from "./TwoFactor";
 
 /**
  * Espace super-administrateur (/superadmin).
@@ -39,8 +40,12 @@ function SuperAdminLogin() {
   const utils = trpc.useUtils();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const login = trpc.auth.login.useMutation({ onSuccess: async () => { setPassword(""); await utils.auth.me.invalidate(); } });
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const login = trpc.auth.login.useMutation({ onSuccess: async (result) => { setPassword(""); if (result.twoFactor) setChallenge(result.challenge); else await utils.auth.me.invalidate(); } });
   const submit = (event: FormEvent) => { event.preventDefault(); login.mutate({ email, password }); };
+  if (challenge) return <Gate icon={<Crown size={28} />} title="Code de sécurité">
+    <TwoFactorLoginStep challenge={challenge} onSuccess={() => { setChallenge(null); void utils.auth.me.invalidate(); }} onCancel={() => { setChallenge(null); login.reset(); }} />
+  </Gate>;
   return <Gate icon={<Crown size={28} />} title="Accès restreint">
     <p>Réservé au super-administrateur de la plateforme. Toute tentative est limitée et la session expire après 12 heures.</p>
     <form onSubmit={submit} style={{ display: "grid", gap: 14, textAlign: "left", marginTop: 22 }} noValidate>
@@ -137,6 +142,7 @@ export default function SuperAdminPage() {
   const auth = useAuth();
   const [tab, setTab] = useState<Tab>("overview");
   const [toast, setToast] = useState<{ message: string; isError: boolean } | null>(null);
+  const gate = useSecondFactorGate();
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 4000); return () => clearTimeout(timer); }, [toast]);
   if (auth.loading) return <main className="kofi-container kofi-page"><Loading /></main>;
   if (!auth.isAuthenticated || !auth.user) return <SuperAdminLogin />;
@@ -145,6 +151,8 @@ export default function SuperAdminPage() {
     <div className="kofi-hero-actions" style={{ justifyContent: "center" }}><a className="kofi-button primary small" href="/">Retour à l’accueil</a><button className="kofi-button outline small" onClick={() => auth.logout()}>Changer de compte</button></div>
   </Gate>;
   const notify = (message: string, isError = false) => setToast({ message, isError });
+  if (gate.loading) return <main className="kofi-container kofi-page"><Loading /></main>;
+  if (gate.mustSetup) return <main className="kofi-container kofi-page kofi-adm"><div className="kofi-dashboard-head"><div><span className="kofi-eyebrow"><Crown size={13} /> Super-administration</span><h1>Sécurité du compte</h1></div></div><TwoFactorSetup required onDone={() => window.location.reload()} /></main>;
   const tabs: { id: Tab; label: string; icon: ReactNode }[] = [
     { id: "overview", label: "Vue d’ensemble", icon: <LayoutDashboard size={15} /> },
     { id: "team", label: "Équipe & accès", icon: <Users size={15} /> },

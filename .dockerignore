@@ -7,3 +7,7 @@ dist
 *.manus-starter-*
 
 uploads
+outbox
+backups
+COMPTES-KOFI.local.md
+infrastructure/prod.env

@@ -2,6 +2,12 @@ import { NOT_ADMIN_ERR_MSG, UNAUTHED_ERR_MSG } from '@shared/const';
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { can, type Permission } from "@shared/permissions";
+import { twoFactorRequired } from "../modules/twoFactor";
+
+/** Administrateurs et super-administrateur : rien n’est accessible tant que la double vérification n’est pas activée. */
+function assertSecondFactorReady(user: { role: string; twoFactorEnabledAt: Date | null }) {
+  if (twoFactorRequired(user.role) && !user.twoFactorEnabledAt) throw new TRPCError({ code: "FORBIDDEN", message: "TWO_FACTOR_SETUP_REQUIRED" });
+}
 import type { TrpcContext } from "./context";
 
 const t = initTRPC.context<TrpcContext>().create({
@@ -54,6 +60,7 @@ export const staffProcedure = (permission: Permission) => t.procedure.use(
     if (!ctx.user || ctx.user.status === "suspended" || !can(ctx.user.role, permission)) {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
+    assertSecondFactorReady(ctx.user);
     return next({ ctx: { ...ctx, user: ctx.user } });
   }),
 );
@@ -64,6 +71,7 @@ export const superAdminProcedure = t.procedure.use(
     if (!ctx.user || ctx.user.status === "suspended" || ctx.user.role !== "superadmin") {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
+    assertSecondFactorReady(ctx.user);
     return next({ ctx: { ...ctx, user: ctx.user } });
   }),
 );

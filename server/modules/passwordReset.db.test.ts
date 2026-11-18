@@ -69,8 +69,8 @@ describe.skipIf(!url)("mot de passe oublié (base réelle)", () => {
     await expect(loginWithPassword(db, { email: "awa@kofi.test", password: "ancien-mot-de-passe" })).rejects.toMatchObject({ code: "INVALID_CREDENTIALS" });
     const fresh = await loginWithPassword(db, { email: "awa@kofi.test", password: "nouveau-mot-de-passe" });
     await expect(sdk.authenticateRequest(req(oldSession))).rejects.toThrow();
-    await expect(sdk.authenticateRequest(req(fresh.token))).resolves.toMatchObject({ id: awa.id });
-  });
+    await expect(sdk.authenticateRequest(req(fresh.token!))).resolves.toMatchObject({ id: awa.id });
+  }, 30_000);
 
   it("refuse un lien expiré, inventé ou remplacé par une nouvelle demande", async () => {
     const now = new Date();

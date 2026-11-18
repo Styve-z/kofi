@@ -16,6 +16,14 @@ export const users = mysqlTable("users", {
   sessionsValidAfter: timestamp("sessionsValidAfter"),
   // Adresse e-mail confirmée par le lien reçu : les e-mails de notification ne partent que vers une adresse vérifiée.
   emailVerifiedAt: timestamp("emailVerifiedAt"),
+  // Double vérification (application d’authentification, TOTP). Le secret est chiffré (AES-256-GCM).
+  twoFactorSecret: varchar("twoFactorSecret", { length: 255 }),
+  twoFactorPendingSecret: varchar("twoFactorPendingSecret", { length: 255 }),
+  twoFactorEnabledAt: timestamp("twoFactorEnabledAt"),
+  // Codes de secours : empreintes JSON ; chacun ne sert qu’une fois.
+  twoFactorBackupCodes: text("twoFactorBackupCodes"),
+  // Dernier pas de temps accepté : un même code ne peut pas resservir.
+  twoFactorLastStep: int("twoFactorLastStep"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),

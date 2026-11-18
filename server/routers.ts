@@ -1,12 +1,14 @@
 import { z } from "zod";
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
-import { loginWithPassword, PASSWORD_MAX, PASSWORD_MIN, registerWithPassword } from "./modules/passwordAuth";
+import { loginWithPassword, openSessionAfterSecondFactor, PASSWORD_MAX, PASSWORD_MIN, registerWithPassword } from "./modules/passwordAuth";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router, staffProcedure, superAdminProcedure } from "./_core/trpc";
 import { createTeamAccount, getPlatformSummary, listTeam, SUPERADMIN_PASSWORD_MIN } from "./modules/superadmin";
 import { checkResetToken, requestPasswordReset, resetPassword } from "./modules/passwordReset";
 import { publicUser, resendVerificationEmail, sendVerificationEmail, verifyEmail } from "./modules/emailVerification";
+import { deleteMyAccount, exportMyData } from "./modules/accountData";
+import { checkSecondFactor, confirmTwoFactorSetup, createLoginChallenge, disableTwoFactor, readLoginChallenge, startTwoFactorSetup, twoFactorRequired } from "./modules/twoFactor";
 import { can, PERMISSIONS, type Permission } from "@shared/permissions";
 import { getDb, type Database } from "./db";
 import { cancelBooking, createBooking, getBookingsForUser, rescheduleBooking, rescheduleSlots } from "./modules/booking";
@@ -70,11 +72,41 @@ export const appRouter = router({
     login: publicProcedure
       .input(z.object({ email: z.string().trim().email().max(320), password: z.string().min(1).max(PASSWORD_MAX) }))
       .mutation(({ ctx, input }) => withDb(async (db) => {
-        const { token, role, maxAge } = await loginWithPassword(db, { ...input, ip: ctx.req.ip });
+        const { token, twoFactorUserId, role, maxAge } = await loginWithPassword(db, { ...input, ip: ctx.req.ip });
+        // Double vérification : aucune session tant que le code n’est pas saisi.
+        if (!token) return { success: false, twoFactor: true, challenge: createLoginChallenge(twoFactorUserId!), home: null } as const;
         ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge });
         // Le super-administrateur arrive directement sur son espace.
+        return { success: true, twoFactor: false, challenge: null, home: role === "superadmin" ? "/superadmin" : null } as const;
+      })),
+    /** Deuxième étape : code de l’application d’authentification (ou code de secours). */
+    loginTwoFactor: publicProcedure
+      .input(z.object({ challenge: z.string().max(400), code: z.string().trim().min(6).max(12) }))
+      .mutation(({ ctx, input }) => withDb(async (db) => {
+        const userId = readLoginChallenge(input.challenge);
+        if (!userId) throw new BusinessError("TWO_FACTOR_EXPIRED");
+        await checkSecondFactor(db, userId, input.code);
+        const { token, role, maxAge } = await openSessionAfterSecondFactor(db, userId);
+        ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge });
         return { success: true, home: role === "superadmin" ? "/superadmin" : null } as const;
       })),
+    /** Droits sur les données : copie complète et suppression du compte. */
+    exportMyData: protectedProcedure.query(({ ctx }) => withDb((db) => exportMyData(db, ctx.user.id))),
+    deleteMyAccount: protectedProcedure
+      .input(z.object({ password: z.string().max(PASSWORD_MAX), confirm: z.string().max(20) }))
+      .mutation(({ ctx, input }) => withDb(async (db) => {
+        const result = await deleteMyAccount(db, ctx.user, input);
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+        return result;
+      })),
+    /** Activation de la double vérification depuis le compte connecté. */
+    twoFactor: router({
+      status: protectedProcedure.query(({ ctx }) => ({ enabled: Boolean(ctx.user.twoFactorEnabledAt), required: twoFactorRequired(ctx.user.role), backupCodesLeft: ctx.user.twoFactorBackupCodes ? (JSON.parse(ctx.user.twoFactorBackupCodes) as string[]).length : 0 })),
+      start: protectedProcedure.mutation(({ ctx }) => withDb((db) => startTwoFactorSetup(db, ctx.user))),
+      confirm: protectedProcedure.input(z.object({ code: z.string().trim().min(6).max(6) })).mutation(({ ctx, input }) => withDb((db) => confirmTwoFactorSetup(db, ctx.user.id, input.code))),
+      disable: protectedProcedure.input(z.object({ password: z.string().min(1).max(PASSWORD_MAX), code: z.string().trim().min(6).max(12) })).mutation(({ ctx, input }) => withDb((db) => disableTwoFactor(db, ctx.user, input))),
+    }),
     /** Mot de passe oublié : répond toujours « envoyé », que le compte existe ou non. */
     requestPasswordReset: publicProcedure
       .input(z.object({ email: z.string().trim().email().max(320) }))

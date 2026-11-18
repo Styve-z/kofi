@@ -4,6 +4,7 @@ import { BadgeCheck, Ban, CalendarDays, Check, ChevronDown, ChevronUp, Flag, Lay
 import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { Empty, Failed, Loading, Pills, ReasonForm, SearchField, useDebounced } from "./shared";
+import { TwoFactorSetup, useSecondFactorGate } from "./TwoFactor";
 import type { AppRouter } from "../../../server/routers";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
@@ -406,11 +407,14 @@ export default function AdminPage() {
   const utils = trpc.useUtils();
   // Chaque changement d’onglet recharge les données : l’équipe voit toujours l’état à jour.
   const setTab = (next: Tab) => { setTabState(next); void utils.admin.invalidate(); };
-  const pending = trpc.admin.overview.useQuery(undefined, { enabled: allowed });
+  const gate = useSecondFactorGate(allowed);
+  const pending = trpc.admin.overview.useQuery(undefined, { enabled: allowed && !gate.loading && !gate.mustSetup });
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 4000); return () => clearTimeout(timer); }, [toast]);
   if (auth.loading) return <main className="kofi-container kofi-page"><Loading /></main>;
   if (!auth.isAuthenticated) return <main className="kofi-container kofi-page"><div className="kofi-empty" style={{ margin: "90px auto", maxWidth: 520 }}><ShieldCheck size={28} /><h2>Accès réservé à l’équipe KOFI</h2><p>Connectez-vous avec un compte de l’équipe pour ouvrir le back-office.</p><a className="kofi-button primary small" href="/connexion">Se connecter</a></div></main>;
   if (!allowed || !auth.user) return <main className="kofi-container kofi-page"><div className="kofi-empty" style={{ margin: "90px auto", maxWidth: 520 }}><ShieldCheck size={28} /><h2>Accès refusé</h2><p>Votre compte ne fait pas partie de l’équipe KOFI.</p><a className="kofi-button primary small" href="/">Retour à l’accueil</a></div></main>;
+  if (gate.loading) return <main className="kofi-container kofi-page"><Loading /></main>;
+  if (gate.mustSetup) return <main className="kofi-container kofi-page kofi-adm"><div className="kofi-dashboard-head"><div><span className="kofi-eyebrow">Administration KOFI</span><h1>Sécurité du compte</h1></div></div><TwoFactorSetup required onDone={() => window.location.reload()} /></main>;
   const role = auth.user.role as Role;
   // Les permissions affichées viennent des mêmes règles que le serveur ; chaque appel est de toute façon revérifié côté serveur.
   const can: Can = (permission) => roleCan(role, permission);

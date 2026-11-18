@@ -121,6 +121,16 @@ export async function loginWithPassword(db: Database, input: { email: string; pa
   if (user.status === "suspended") throw new BusinessError("ACCOUNT_SUSPENDED");
 
   clearFailures(keys);
+  // Double vérification activée : pas de session avant le code (voir openSessionAfterSecondFactor).
+  if (user.twoFactorEnabledAt) return { token: null, twoFactorUserId: user.id, role: user.role, maxAge: sessionDurationFor(user.role) };
+  await db.update(users).set({ lastSignedIn: new Date(now) }).where(eq(users.id, user.id));
+  return { token: await sessionFor(user), twoFactorUserId: null, role: user.role, maxAge: sessionDurationFor(user.role) };
+}
+
+/** Deuxième étape de connexion : le code a été vérifié, on ouvre la session. */
+export async function openSessionAfterSecondFactor(db: Database, userId: number, now = Date.now()) {
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user || user.status === "suspended") throw new BusinessError("INVALID_CREDENTIALS");
   await db.update(users).set({ lastSignedIn: new Date(now) }).where(eq(users.id, user.id));
   return { token: await sessionFor(user), role: user.role, maxAge: sessionDurationFor(user.role) };
 }

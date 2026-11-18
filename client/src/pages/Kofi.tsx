@@ -56,6 +56,8 @@ import {
 // Le back-office n’est téléchargé que par les administrateurs qui ouvrent /admin.
 const AdminPage = lazy(() => import("./Admin"));
 const SuperAdminPage = lazy(() => import("./SuperAdmin"));
+import { TwoFactorLoginStep } from "./TwoFactor";
+import { AccountDataSection, LegalDocument } from "./Legal";
 const ProPage = lazy(() => import("./Pro"));
 // Tondeuse 3D (Three.js) : chargée à part pour ne pas alourdir le premier affichage.
 const Clipper3D = lazy(() => import("@/components/Clipper3D"));
@@ -336,7 +338,7 @@ function Footer() {
       <div className="kofi-footer-brand"><Logo /><p>La réservation beauté simple et transparente au Cameroun : tarifs affichés, vrais créneaux, professionnels vérifiés.</p><span className="kofi-footer-tag"><ShieldCheck size={14} /> Paiement Mobile Money sécurisé</span></div>
       <nav aria-label="Clients"><h4>Clients</h4><Link href="/recherche">Trouver un professionnel</Link><Link href="/recherche?offers=1">Offres heures creuses</Link><Link href="/cartes-cadeaux">Cartes cadeaux</Link><Link href="/fidelite">Programme fidélité</Link><Link href="/mes-reservations">Mes réservations</Link></nav>
       <nav aria-label="Professionnels"><h4>Professionnels</h4><Link href="/professionnel">Espace professionnel</Link><Link href="/professionnel">Publier mes tarifs</Link><Link href="/professionnel">Gérer mon agenda</Link></nav>
-      <nav aria-label="Informations"><h4>Informations</h4><Link href="/aide">Aide et questions fréquentes</Link><Link href="/confidentialite">Confidentialité</Link><Link href="/mentions-legales">Mentions légales</Link></nav>
+      <nav aria-label="Informations"><h4>Informations</h4><Link href="/aide">Aide et questions fréquentes</Link><Link href="/cgu">Conditions d’utilisation</Link><Link href="/confidentialite">Confidentialité</Link><Link href="/mentions-legales">Mentions légales</Link></nav>
     </div>
     <div className="kofi-container kofi-footer-bottom"><span>© {new Date().getFullYear()} KOFI · Une réservation plus humaine.</span><span>Douala · Yaoundé · Bafoussam · Photos d’illustration : Unsplash</span></div>
   </footer>;
@@ -808,9 +810,11 @@ function LoginPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const onSuccess = async (result: { success: true; home?: string | null }) => { setPassword(""); await utils.auth.me.invalidate(); setLocation(result?.home ?? loginRedirectTarget()); };
-  const login = trpc.auth.login.useMutation({ onSuccess });
-  const register = trpc.auth.register.useMutation({ onSuccess });
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const finish = async (home?: string | null) => { setPassword(""); setChallenge(null); await utils.auth.me.invalidate(); setLocation(home ?? loginRedirectTarget()); };
+  // Mot de passe correct mais double vérification activée : on demande le code avant d’ouvrir la session.
+  const login = trpc.auth.login.useMutation({ onSuccess: (result) => { if (result.twoFactor) { setPassword(""); setChallenge(result.challenge); } else void finish(result.home); } });
+  const register = trpc.auth.register.useMutation({ onSuccess: () => finish(null) });
   const pending = login.isPending || register.isPending;
   const error = authErrorMessage(mode === "login" ? login.error : register.error);
   const manusConfigured = Boolean(window.__MANUS_CONFIG__?.oauthPortalUrl && window.__MANUS_CONFIG__?.projectId);
@@ -845,7 +849,16 @@ function LoginPage() {
         <Link href="/admin"><ShieldCheck size={18} /><span>Back-office</span></Link>
       </>}
     </div>
-    <div className="kofi-hero-actions" style={{ justifyContent: "center" }}><button className="kofi-button outline" onClick={() => auth.logout()}>Se déconnecter</button></div></div></main>;
+    <div className="kofi-hero-actions" style={{ justifyContent: "center" }}><button className="kofi-button outline" onClick={() => auth.logout()}>Se déconnecter</button></div>
+    {(account.kind === "client" || account.kind === "pro") && <AccountDataSection onDeleted={() => { void utils.auth.me.invalidate(); setLocation("/"); }} />}
+    </div></main>;
+
+  if (challenge) return <main className="kofi-container kofi-page"><div className="kofi-success" style={{ maxWidth: 440 }}>
+    <div className="success-icon"><ShieldCheck size={28} /></div>
+    <span className="kofi-eyebrow">Double vérification</span>
+    <h1>Code de sécurité</h1>
+    <TwoFactorLoginStep challenge={challenge} onSuccess={(home) => void finish(home)} onCancel={() => { setChallenge(null); login.reset(); }} />
+  </div></main>;
 
   return <main className="kofi-container kofi-page"><div className="kofi-success" style={{ maxWidth: 440 }}>
     <div className="success-icon"><UserRound size={28} /></div>
@@ -858,6 +871,7 @@ function LoginPage() {
       <div className="kofi-form-group"><label htmlFor="auth-email">E-mail</label><input id="auth-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" inputMode="email" required maxLength={320} /></div>
       <div className="kofi-form-group"><label htmlFor="auth-password">Mot de passe{mode === "register" ? " (8 caractères min.)" : ""}</label><input id="auth-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={mode === "register" ? 8 : 1} maxLength={128} /></div>
       {mode === "login" && <Link href="/mot-de-passe-oublie" className="kofi-link" style={{ justifySelf: "end", fontSize: 14 }}>Mot de passe oublié ?</Link>}
+      {mode === "register" && <small style={{ color: "#5d6779", lineHeight: 1.5 }}>En créant un compte, vous acceptez les <Link href="/cgu" className="kofi-link">conditions d’utilisation</Link> et la <Link href="/confidentialite" className="kofi-link">politique de confidentialité</Link>.</small>}
       {error && <div className="kofi-alert" role="alert" style={{ marginBottom: 0 }}><X size={16} /> {error}</div>}
       <button className="kofi-button primary" type="submit" disabled={pending}><LogIn size={16} /> {pending ? "Patientez…" : mode === "login" ? "Se connecter" : "Créer mon compte"}</button>
     </form>
@@ -957,10 +971,6 @@ function EmptyPage({ title, description, action, onAction }: { title: string; de
   return <main className="kofi-container kofi-page"><div className="kofi-empty" style={{ margin: "90px auto", maxWidth: 520 }}><Scissors size={28} /><h2>{title}</h2><p>{description}</p>{action && onAction && <button className="kofi-button primary small" onClick={onAction}>{action}</button>}</div></main>;
 }
 
-function LegalPage({ privacy = false }: { privacy?: boolean }) {
-  return <main className="kofi-container kofi-page"><h1 className="kofi-page-title">{privacy ? "Politique de confidentialité" : "Mentions légales"}</h1><div className="kofi-panel" style={{ maxWidth: 800, lineHeight: 1.7, color: "#556073" }}><p><strong>KOFI est en phase de test.</strong> Cette page constitue une structure de contenu à faire valider juridiquement avant toute ouverture au public.</p><h3>Données et usage</h3><p>KOFI est conçu pour traiter les coordonnées nécessaires à une demande de réservation, le profil professionnel, les disponibilités, l’historique de statut et les preuves d’action utiles au support. Les données ne doivent être conservées que pour une finalité documentée.</p><h3>Services externes</h3><p>Le paiement, les notifications, la cartographie et le stockage d’images seront activés séparément après configuration des prestataires et validation des conditions applicables.</p><h3>Contact</h3><p>Une adresse de contact opérationnelle et les informations de l’éditeur devront être ajoutées avant publication commerciale.</p></div></main>;
-}
-
 export default function KofiApp() {
   const [location, setLocation] = useLocation();
   const [draft, setDraft] = useState<BookingDraft | null>(readDraft);
@@ -995,8 +1005,9 @@ export default function KofiApp() {
   else if (page === "/fidelite") content = <LoyaltyPage />;
   else if (page === "/cartes-cadeaux") content = <GiftCardsPage />;
   else if (page === "/aide") content = <HelpPage />;
-  else if (page === "/confidentialite") content = <LegalPage privacy />;
-  else if (page === "/mentions-legales") content = <LegalPage />;
+  else if (page === "/confidentialite") content = <LegalDocument kind="privacy" />;
+  else if (page === "/mentions-legales") content = <LegalDocument kind="mentions" />;
+  else if (page === "/cgu") content = <LegalDocument kind="cgu" />;
   else content = <EmptyPage title="Page introuvable" description="Cette page n’existe pas. Revenez à l’accueil pour poursuivre votre parcours." action="Retour à l’accueil" onAction={() => setLocation("/")} />;
   return <div className="kofi-shell"><Header /><OfflineBanner />{content}<Footer /></div>;
 }

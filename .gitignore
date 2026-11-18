@@ -127,3 +127,7 @@ uploads/
 
 # E-mails de développement (mode « log »)
 outbox/
+
+# Sauvegardes de base et configuration de production
+backups/
+infrastructure/prod.env

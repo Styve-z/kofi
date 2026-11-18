@@ -62,5 +62,5 @@ export async function verifyEmail(db: Database, token: string, now = new Date())
 /** Ce que le navigateur reçoit du compte connecté : jamais l’empreinte du mot de passe ni les champs internes. */
 export function publicUser(user: User | null) {
   if (!user) return null;
-  return { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status, loginMethod: user.loginMethod, emailVerified: Boolean(user.emailVerifiedAt), createdAt: user.createdAt, lastSignedIn: user.lastSignedIn };
+  return { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status, loginMethod: user.loginMethod, emailVerified: Boolean(user.emailVerifiedAt), twoFactorEnabled: Boolean(user.twoFactorEnabledAt), createdAt: user.createdAt, lastSignedIn: user.lastSignedIn };
 }

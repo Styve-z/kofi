@@ -1,0 +1,44 @@
+# Déploiement KOFI sur un serveur (VPS) avec Docker.
+#   1. Copier ce dépôt sur le serveur.
+#   2. Créer infrastructure/prod.env à partir de .env.example (secrets : scripts/generate-secrets.ts) — JAMAIS dans Git.
+#   3. docker compose -f infrastructure/docker-compose.production.yml --env-file infrastructure/prod.env up -d --build
+#   4. Mettre un proxy HTTPS devant le port 3000 (Caddy, Nginx + Let’s Encrypt, ou celui de l’hébergeur).
+# Voir documentation/production.md.
+services:
+  app:
+    build: ..
+    restart: unless-stopped
+    env_file: prod.env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://kofi:${DB_PASSWORD}@mysql:3306/kofi
+      TRUST_PROXY: "1"
+      UPLOAD_DIR: /app/uploads
+    ports:
+      - "127.0.0.1:3000:3000"   # accessible seulement par le proxy HTTPS de la machine
+    volumes:
+      - kofi_uploads:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: kofi
+      MYSQL_USER: kofi
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    # Pas de port publié : la base n’est joignable que par l’application.
+    volumes:
+      - kofi_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  kofi_mysql:
+  kofi_uploads:

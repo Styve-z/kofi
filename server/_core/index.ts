@@ -10,10 +10,13 @@ import { serveStatic, setupVite } from "./vite";
 import { registerUploadRoutes } from "../uploads";
 import { registerPaymentWebhook } from "../paymentsWebhook";
 import { startBackgroundJobs } from "../backgroundJobs";
+import { applySecurityHeaders, enforceProductionConfig } from "./security";
 
 async function startServer() {
+  enforceProductionConfig();
   const app = express();
   const server = createServer(app);
+  applySecurityHeaders(app);
   // Requêtes JSON limitées à 1 Mo ; les photos passent par /api/uploads (voir server/uploads.ts).
   // CORS pour l’API, seulement vers les origines listées dans CORS_ORIGINS (ex. l’app Expo en mode web
   // pendant le développement). Les applications natives n’en ont pas besoin. Pas de cookies croisés :

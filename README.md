@@ -25,7 +25,14 @@ KOFI est une plateforme de réservation de professionnels de la beauté (coiffur
 | Administrateur | Tout le back-office `/admin` : paiements, codes promo, nomination des agents de support et des modérateurs |
 | Super-administrateur | Espace `/superadmin` : création et retrait des administrateurs, suspension de tout compte, journal complet. Ce rôle ne s’attribue que par script et ne peut être ni modifié ni suspendu depuis le site. Sa session dure 12 h. |
 
-Chaque type de compte (visiteur, client, professionnel, équipe, super-admin) a son propre menu. Le serveur revérifie le rôle à chaque appel : masquer un lien n’est jamais la seule protection.
+Chaque type de compte (visiteur, client, professionnel, équipe, super-admin) a son propre menu. Le serveur revérifie le rôle à chaque appel : masquer un lien n’est jamais la seule protection. Les administrateurs et le super-administrateur doivent activer la **double vérification** (code d’une application d’authentification, 8 codes de secours) : sans elle, le back-office reste fermé.
+
+### Comptes et messages
+- **Mot de passe oublié :** lien envoyé par e-mail, valable 1 h et à usage unique. Les sessions ouvertes avant le changement sont coupées.
+- **Vérification de l’adresse e-mail à l’inscription :** les e-mails ne partent que vers une adresse vérifiée.
+- **E-mails et SMS automatiques :** demande envoyée, confirmation, refus, annulation, paiements, et **rappel la veille** du rendez-vous. Ils passent par une file d’envoi avec nouvelles tentatives.
+- **Mes données :** téléchargement de toutes ses données et suppression du compte (les rendez-vous passés sont conservés, anonymisés).
+- **Pages légales :** CGU, confidentialité et mentions légales (`/cgu`, `/confidentialite`, `/mentions-legales`), en version de travail à faire valider.
 
 ## Stack
 
@@ -105,15 +112,22 @@ apps/mobile/          application Expo
 documentation/        architecture, API, intégrations, déploiement
 ```
 
-## Avant une mise en production
+## E-mails et SMS
 
-- Brancher un vrai prestataire Mobile Money (MTN / Orange) et ses webhooks.
-- Ajouter l’envoi d’e-mails et de SMS (confirmation, rappel, mot de passe oublié).
-- Remplacer les comptes et le catalogue de démonstration, et choisir des mots de passe forts.
-- Générer de vrais secrets, utiliser un utilisateur de base dédié, activer HTTPS et des sauvegardes.
-- Faire valider juridiquement les pages légales (CGU, confidentialité).
+Sans réglage (`EMAIL_PROVIDER` / `SMS_PROVIDER` vides), rien n’est envoyé : chaque message est écrit dans le dossier `outbox/`, ignoré par Git, pour être relu pendant le développement. Brancher un vrai service revient à écrire un adaptateur dans `server/modules/mailer.ts` ou `server/modules/sms.ts`.
 
-L’état détaillé est suivi dans `documentation/release-status.md` et `TODO.md`.
+## Mise en production
+
+Le guide complet est dans [`documentation/production.md`](documentation/production.md) : Docker, HTTPS, utilisateur MySQL dédié, sauvegardes et premiers comptes.
+
+```bash
+pnpm exec tsx scripts/generate-secrets.ts              # secrets forts
+pnpm exec tsx scripts/check-production.ts prod.env     # vérifie la configuration
+```
+
+En production, le serveur **refuse de démarrer** si la configuration est dangereuse : secret faible, base en `root`, site sans HTTPS ou paiement en mode test. Il ajoute lui-même les en-têtes de sécurité (CSP, HSTS…).
+
+Il reste à choisir l’hébergement, le nom de domaine et les prestataires réels de paiement, d’e-mails et de SMS, et à faire valider les textes légaux. L’état détaillé est suivi dans `documentation/release-status.md` et `TODO.md`.
 
 ## Sécurité
 
