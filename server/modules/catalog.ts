@@ -22,10 +22,14 @@ export type CatalogProfessional = {
   offpeakRules: OffpeakRule[];
   staff: StaffMember[];
   createdAt: string;
+  /** Numéro WhatsApp que le professionnel a choisi d’afficher (sinon null). */
+  whatsapp: string | null;
+  /** Position du salon pour la carte (sinon null). */
+  location: { lat: number; lng: number } | null;
 };
 
 export type SearchSort = "recommended" | "rating" | "price_asc" | "price_desc" | "newest";
-export type SearchInput = { query?: string; city?: string; mode?: string; maxPrice?: number; limit?: number; sort?: SearchSort; minRating?: number; availableOn?: string; offersOnly?: boolean };
+export type SearchInput = { query?: string; city?: string; neighborhood?: string; mode?: string; maxPrice?: number; limit?: number; sort?: SearchSort; minRating?: number; availableOn?: string; offersOnly?: boolean };
 
 export const TOP_RATED = { minRating: 4.5, minReviews: 3 } as const;
 
@@ -58,6 +62,8 @@ function toProfessional(profile: ProfileRow, services: ServiceRow[], extras: { r
     offpeakRules: rules,
     staff: extras.staff ?? [],
     createdAt: profile.createdAt.toISOString(),
+    whatsapp: profile.whatsappPhone ?? null,
+    location: profile.latitude && profile.longitude ? { lat: Number(profile.latitude), lng: Number(profile.longitude) } : null,
     id: profile.slug,
     slug: profile.slug,
     name: profile.displayName,
@@ -91,7 +97,10 @@ export async function searchCatalog(db: Database, input: SearchInput = {}, now =
   const filters = [inArray(professionalProfiles.verificationStatus, PUBLIC_STATUSES)];
   if (input.city && input.city !== "Toutes les villes") filters.push(eq(professionalProfiles.city, input.city));
   if (input.mode === "salon" || input.mode === "domicile") filters.push(inArray(professionalProfiles.mode, [input.mode, "les deux"]));
-  const profiles = await db.select().from(professionalProfiles).where(and(...filters)).orderBy(asc(professionalProfiles.displayName));
+  const neighborhood = input.neighborhood?.trim();
+  let profiles = await db.select().from(professionalProfiles).where(and(...filters)).orderBy(asc(professionalProfiles.displayName));
+  // Quartier : comparaison sans accents ni majuscules (« Bonamoussadi » = « bonamoussadi »).
+  if (neighborhood) profiles = profiles.filter((profile) => foldText(profile.neighborhood ?? "") === foldText(neighborhood));
   const ids = profiles.map((profile) => profile.id);
   const [services, rules] = await Promise.all([servicesFor(db, ids), activeRules(db, ids)]);
   const query = input.query?.trim().toLocaleLowerCase() ?? "";
@@ -137,6 +146,21 @@ export async function getProfessional(db: Database, slug: string): Promise<Catal
   if (!profile) return null;
   const [services, rules, staff] = await Promise.all([servicesFor(db, [profile.id]), activeRules(db, [profile.id]), staffByProfessional(db, [profile.id])]);
   return toProfessional(profile, services, { rules: rules.get(profile.id), staff: staff.get(profile.id) });
+}
+
+const foldText = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLocaleLowerCase("fr");
+
+/** Quartiers des professionnels publics (une ville donnée, ou toutes), sans doublons d’orthographe. */
+export async function listNeighborhoods(db: Database, city?: string): Promise<string[]> {
+  const filters = [inArray(professionalProfiles.verificationStatus, PUBLIC_STATUSES)];
+  if (city && city !== "Toutes les villes") filters.push(eq(professionalProfiles.city, city));
+  const rows = await db.select({ neighborhood: professionalProfiles.neighborhood }).from(professionalProfiles).where(and(...filters));
+  const byKey = new Map<string, string>();
+  for (const row of rows) {
+    const name = row.neighborhood?.trim();
+    if (name && !byKey.has(foldText(name))) byKey.set(foldText(name), name);
+  }
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b, "fr"));
 }
 
 export async function listCategories(db: Database): Promise<string[]> {

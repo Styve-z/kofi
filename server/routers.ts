@@ -17,7 +17,7 @@ import { getMyLoyalty } from "./modules/loyalty";
 import { checkGiftCard, getGiftCardPayment, GIFT_CARD, listMyGiftCards, purchaseGiftCard } from "./modules/giftcards";
 import { simulateGiftCardTestPayment } from "./modules/payments/index";
 import { listMyStaff, saveStaffMember, setStaffActive } from "./modules/staff";
-import { addOffpeakRule, listMyOffpeak, removeOffpeakRule } from "./modules/offpeak";import { getFreeSlots, getProfessional, listCategories, searchCatalog } from "./modules/catalog";
+import { addOffpeakRule, listMyOffpeak, removeOffpeakRule } from "./modules/offpeak";import { getFreeSlots, getProfessional, listCategories, listNeighborhoods, searchCatalog } from "./modules/catalog";
 import { BusinessError, toTrpcError } from "./modules/errors";
 import type { WeeklyHours } from "./modules/schedule";
 import { addClosure, applyAsProfessional, getMyOverview, getMyProfessional, listClosures, listMyBookings, removeClosure, saveService, setServiceActive, setWeeklyHours, transitionMyBooking, updateMyProfile } from "./modules/pro";
@@ -51,6 +51,8 @@ const profileInput = z.object({
   displayName: z.string().trim().min(2).max(180), salonName: z.string().trim().max(180).optional(), city: z.string().trim().min(2).max(80),
   neighborhood: z.string().trim().max(120).optional(), mode: z.enum(["salon", "domicile", "les deux"]), bio: z.string().trim().max(1000).optional(),
   specialties: z.array(z.string().trim().min(1).max(40)).max(8).optional(),
+  whatsapp: z.string().trim().max(30).optional(),
+  location: z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) }).nullable().optional(),
 });
 const reportCategory = z.enum(["no_show_pro", "quality", "price", "behavior", "safety", "other"]);
 const reportStatus = z.enum(["open", "in_progress", "resolved", "rejected"]);
@@ -125,8 +127,11 @@ export const appRouter = router({
       .input(z.object({
         query: z.string().max(120).optional(), city: z.string().max(80).optional(), mode: z.string().max(20).optional(), maxPrice: z.number().int().positive().optional(), limit: z.number().int().min(1).max(100).optional(),
         sort: z.enum(["recommended", "rating", "price_asc", "price_desc", "newest"]).optional(), minRating: z.number().min(0).max(5).optional(), availableOn: day.optional(), offersOnly: z.boolean().optional(),
+        neighborhood: z.string().max(120).optional(),
       }).optional())
       .query(({ input }) => withDb((db) => searchCatalog(db, input ?? {}))),
+    /** Quartiers où au moins un professionnel public est installé (filtre de recherche). */
+    neighborhoods: publicProcedure.input(z.object({ city: z.string().max(80).optional() }).optional()).query(({ input }) => withDb((db) => listNeighborhoods(db, input?.city))),
     professional: publicProcedure.input(z.object({ slug })).query(({ input }) => withDb((db) => getProfessional(db, input.slug))),
     categories: publicProcedure.query(() => withDb((db) => listCategories(db))),
     portfolio: publicProcedure.input(z.object({ slug })).query(({ input }) => withDb((db) => listPublicPortfolio(db, input.slug))),

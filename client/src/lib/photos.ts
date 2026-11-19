@@ -4,6 +4,8 @@
  * Ce sont des photos D’ILLUSTRATION : elles ne montrent pas le travail des professionnels inscrits sur KOFI.
  * Pour remplacer une photo, changez simplement son identifiant ci-dessous.
  */
+import { dataSaverOn } from "./dataSaver";
+
 const PHOTOS = {
   hero: "photo-1567894340315-735d7c361db0", // barbier coupant une coupe afro
   proCta: "photo-1653758265969-b048bb0b328a", // barbier au travail dans son salon
@@ -19,13 +21,16 @@ const PHOTOS = {
 export type PhotoKey = keyof typeof PHOTOS;
 
 export function photoUrl(key: PhotoKey, width: number, height?: number) {
-  const params = new URLSearchParams({ auto: "format", fit: "crop", w: String(width), q: "70" });
-  if (height) params.set("h", String(height));
+  // Données légères : image deux fois plus petite et plus compressée (environ 5 fois moins lourde).
+  const scale = dataSaverOn ? 0.5 : 1;
+  const params = new URLSearchParams({ auto: "format", fit: "crop", w: String(Math.round(width * scale)), q: dataSaverOn ? "45" : "70" });
+  if (height) params.set("h", String(Math.round(height * scale)));
   return `https://images.unsplash.com/${PHOTOS[key]}?${params.toString()}`;
 }
 
-/** Jeu de tailles pour les écrans haute densité. */
+/** Jeu de tailles pour les écrans haute densité (une seule taille en mode données légères). */
 export function photoSrcSet(key: PhotoKey, width: number, height?: number) {
+  if (dataSaverOn) return `${photoUrl(key, width, height)} 1x`;
   return [1, 2].map((scale) => `${photoUrl(key, width * scale, height ? height * scale : undefined)} ${scale}x`).join(", ");
 }
 

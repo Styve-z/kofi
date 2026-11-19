@@ -11,11 +11,13 @@ KOFI est une plateforme de réservation de professionnels de la beauté (coiffur
 - Badge **Top Rated** (note ≥ 4,5 sur au moins 3 avis) et prix « Dès X FCFA ».
 - Profil du salon : prestations, choix du **collaborateur** (ou « peu importe »), créneaux avec remises **heures creuses**, avis et photos.
 - Réservation avec code promo, **points de fidélité** et **carte cadeau**. Annulation, **déplacement d’un rendez-vous** et avis après la prestation.
+- Filtre par **quartier**, bouton **WhatsApp** et **carte avec itinéraire** (OpenStreetMap) sur le profil du salon. Mode **données légères** (photos réduites, sans 3D), activé tout seul sur connexion 2G ou économiseur de données.
 - **Favoris**, **fidélité** (1 point par tranche de 100 FCFA ; 100 points = 500 FCFA, jusqu’à 50 % du prix), **cartes cadeaux** de 5 000 à 200 000 FCFA valables 1 an, notifications et **Aide / FAQ**.
 
 ### Professionnels
 - Tableau de bord, demandes à traiter, agenda, historique et revenus.
-- Prestations, horaires et congés, **équipe** (agenda propre à chaque collaborateur), **heures creuses** (−5 à −50 % par jour et plage horaire), photos et réponses aux avis.
+- Prestations, horaires et congés, **équipe** (agenda propre à chaque collaborateur), **heures creuses** (−5 à −50 % par jour et plage horaire), photos (plusieurs d’un coup ou prises avec l’appareil photo du téléphone, réduites avant l’envoi) et réponses aux avis.
+- Numéro WhatsApp public et position du salon relevée par le GPS du téléphone.
 
 ### Équipe KOFI
 | Rôle | Accès |

@@ -1,5 +1,5 @@
 import type { inferRouterOutputs } from "@trpc/server";
-import { Percent, Users } from "lucide-react";
+import { Camera, MapPin, Percent, Users } from "lucide-react";
 import { ArrowRight, CalendarDays, Check, CheckCircle2, Circle, Clock3, ExternalLink, History, Home as HomeIcon, Image as ImageIcon, Inbox, LayoutDashboard, LogIn, Pencil, Phone, Plus, Scissors, ShieldCheck, Star, Store, Trash2, TrendingUp, UserRound, Wallet, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -24,6 +24,8 @@ const ERRORS: Record<string, string> = {
   PROFESSIONAL_SUSPENDED: "Votre profil est suspendu : vous ne pouvez pas traiter de demande. Contactez KOFI.",
   ALREADY_PROFESSIONAL: "Ce compte a déjà un profil professionnel.",
   PROFILE_INVALID: "Indiquez au moins votre nom et votre ville.",
+  WHATSAPP_INVALID: "Numéro WhatsApp invalide : indiquez un numéro camerounais à 9 chiffres (ex. 6 90 12 34 56).",
+  LOCATION_INVALID: "Position hors du Cameroun : relevez-la depuis votre salon.",
   SERVICE_INVALID: "Vérifiez la prestation : durée entre 10 min et 10 h, prix d’au moins 500 FCFA.",
   SERVICE_LIMIT: "Vous avez atteint le nombre maximum de prestations.",
   HOURS_INVALID: "Vérifiez les horaires : l’ouverture doit précéder la fermeture.",
@@ -64,7 +66,29 @@ function Field({ label, children, hint }: { label: string; children: ReactNode; 
 // Profil (inscription et modification)
 // ---------------------------------------------------------------------------
 
-type ProfileValues = { displayName: string; salonName: string; city: string; neighborhood: string; mode: "salon" | "domicile" | "les deux"; bio: string; specialties: string };
+type ProfileValues = { displayName: string; salonName: string; city: string; neighborhood: string; mode: "salon" | "domicile" | "les deux"; bio: string; specialties: string; whatsapp: string; location: { lat: number; lng: number } | null };
+
+/** Position du salon : relevée par le téléphone (GPS) sur place, jamais devinée. */
+function LocationField({ value, onChange }: { value: ProfileValues["location"]; onChange: (location: ProfileValues["location"]) => void }) {
+  const [status, setStatus] = useState("");
+  const locate = () => {
+    if (!("geolocation" in navigator)) { setStatus("Votre appareil ne permet pas de relever la position."); return; }
+    setStatus("Recherche de la position…");
+    navigator.geolocation.getCurrentPosition(
+      (position) => { onChange({ lat: Number(position.coords.latitude.toFixed(6)), lng: Number(position.coords.longitude.toFixed(6)) }); setStatus("Position relevée. Pensez à enregistrer le profil."); },
+      () => setStatus("Position indisponible : autorisez la localisation, ou réessayez dehors."),
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+    );
+  };
+  return <div className="kofi-form-group full">
+    <span>Position du salon sur la carte (optionnel)</span>
+    <div className="kofi-location-row">
+      <button type="button" className="kofi-button outline small" onClick={locate}><MapPin size={14} /> {value ? "Relever à nouveau" : "Utiliser ma position actuelle"}</button>
+      {value && <><a className="kofi-link" href={`https://www.openstreetmap.org/?mlat=${value.lat}&mlon=${value.lng}#map=17/${value.lat}/${value.lng}`} target="_blank" rel="noreferrer">Vérifier sur la carte</a><button type="button" className="kofi-link-button" onClick={() => { onChange(null); setStatus("Position retirée. Pensez à enregistrer le profil."); }}>Retirer</button></>}
+    </div>
+    <small className="kofi-adm-hint" aria-live="polite">{status || "Faites-le depuis votre salon : vos clients verront la carte et l’itinéraire. Inutile si vous travaillez uniquement à domicile."}</small>
+  </div>;
+}
 
 function ProfileForm({ initial, submitLabel, busy, error, onSubmit }: { initial: ProfileValues; submitLabel: string; busy: boolean; error: string; onSubmit: (values: ProfileValues) => void }) {
   const [values, setValues] = useState(initial);
@@ -78,6 +102,8 @@ function ProfileForm({ initial, submitLabel, busy, error, onSubmit }: { initial:
       <Field label="Quartier (optionnel)"><input value={values.neighborhood} onChange={set("neighborhood")} placeholder="Ex. Bonamoussadi" /></Field>
       <Field label="Où travaillez-vous ?"><select value={values.mode} onChange={set("mode") as never}><option value="salon">En salon</option><option value="domicile">À domicile</option><option value="les deux">Salon et domicile</option></select></Field>
       <Field label="Spécialités" hint="Séparées par des virgules, 8 au plus."><input value={values.specialties} onChange={set("specialties")} placeholder="Tresses, Ongles, Maquillage" /></Field>
+      <Field label="Numéro WhatsApp (optionnel)" hint="Affiché sur votre profil : vos clients pourront vous écrire en un geste."><input value={values.whatsapp} onChange={set("whatsapp")} placeholder="6 90 12 34 56" inputMode="tel" autoComplete="tel" /></Field>
+      <LocationField value={values.location} onChange={(location) => setValues((current) => ({ ...current, location }))} />
       <div className="kofi-form-group full"><Field label="Présentation (optionnel)"><textarea value={values.bio} onChange={set("bio")} maxLength={1000} placeholder="Votre façon de travailler, votre expérience, ce qui vous distingue…" /></Field></div>
     </div>
     <button className="kofi-button primary" type="submit" style={{ marginTop: 16 }} disabled={busy}>{busy ? "Enregistrement…" : submitLabel}</button>
@@ -87,6 +113,7 @@ function ProfileForm({ initial, submitLabel, busy, error, onSubmit }: { initial:
 const toInput = (values: ProfileValues) => ({
   displayName: values.displayName.trim(), salonName: values.salonName.trim() || undefined, city: values.city.trim(), neighborhood: values.neighborhood.trim() || undefined,
   mode: values.mode, bio: values.bio.trim() || undefined, specialties: values.specialties.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 8),
+  whatsapp: values.whatsapp.trim(), location: values.location,
 });
 
 function Onboarding() {
@@ -103,7 +130,7 @@ function Onboarding() {
     <h1 className="kofi-page-title">Recevez vos clients sans passer vos journées au téléphone.</h1>
     <p className="kofi-page-lead">Créez votre profil en deux minutes. Ajoutez ensuite vos prestations et vos horaires : l’équipe KOFI vérifie votre profil avant d’afficher le badge « Vérifié ».</p>
     <ol className="kofi-pro-steps"><li><strong>1.</strong> Votre profil</li><li><strong>2.</strong> Vos prestations et horaires</li><li><strong>3.</strong> Validation par KOFI</li></ol>
-    <ProfileForm initial={{ displayName: "", salonName: "", city: "", neighborhood: "", mode: "salon", bio: "", specialties: "" }} submitLabel="Créer mon profil professionnel" busy={register.isPending} error={error} onSubmit={submit} />
+    <ProfileForm initial={{ displayName: "", salonName: "", city: "", neighborhood: "", mode: "salon", bio: "", specialties: "", whatsapp: "", location: null }} submitLabel="Créer mon profil professionnel" busy={register.isPending} error={error} onSubmit={submit} />
   </main>;
 }
 
@@ -342,23 +369,32 @@ function PhotosTab({ notify }: { notify: (message: string, isError?: boolean) =>
   const list = trpc.pro.portfolio.useQuery();
   const remove = trpc.pro.removePhoto.useMutation({ onSuccess: () => { utils.pro.portfolio.invalidate(); notify("Photo retirée."); }, onError: (error) => notify(errorText(error.message), true) });
   const [description, setDescription] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const upload = async (file: File | undefined) => {
-    if (!file) return;
-    setUploading(true);
+  const [uploading, setUploading] = useState("");
+  // Plusieurs photos d’un coup (galerie) ou une photo prise sur le moment (appareil photo du téléphone).
+  // Chaque photo est réduite sur le téléphone avant l’envoi, puis envoyée l’une après l’autre.
+  const upload = async (picked: FileList | null, room: number) => {
+    const files = [...(picked ?? [])].slice(0, Math.max(0, room));
+    if (!files.length) return;
+    const caption = description.trim();
+    let sent = 0;
+    let failure = "";
     try {
-      const body = await shrinkForUpload(file);
-      const response = await fetch("/api/uploads/portfolio", { method: "POST", credentials: "include", headers: { "Content-Type": body.type || "application/octet-stream", ...(description.trim() ? { "X-Description": encodeURIComponent(description.trim()) } : {}) }, body });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) { notify(PHOTO_ERRORS[result.error] ?? "L’envoi a échoué. Réessayez.", true); return; }
-      setDescription("");
-      notify("Photo envoyée : elle sera visible après validation par KOFI.");
-      utils.pro.portfolio.invalidate();
+      for (const [index, file] of files.entries()) {
+        setUploading(files.length > 1 ? `Envoi ${index + 1}/${files.length}…` : "Envoi en cours…");
+        const body = await shrinkForUpload(file);
+        const response = await fetch("/api/uploads/portfolio", { method: "POST", credentials: "include", headers: { "Content-Type": body.type || "application/octet-stream", ...(caption ? { "X-Description": encodeURIComponent(caption) } : {}) }, body });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) { failure = PHOTO_ERRORS[result.error] ?? "L’envoi a échoué. Réessayez."; break; }
+        sent++;
+      }
     } catch {
-      notify("L’envoi a échoué : vérifiez votre connexion.", true);
+      failure = "L’envoi a échoué : vérifiez votre connexion.";
     } finally {
-      setUploading(false);
+      setUploading("");
     }
+    if (sent) { setDescription(""); utils.pro.portfolio.invalidate(); }
+    if (failure) notify(sent ? `${sent} photo(s) envoyée(s), puis : ${failure}` : failure, true);
+    else notify(sent > 1 ? `${sent} photos envoyées : elles seront visibles après validation par KOFI.` : "Photo envoyée : elle sera visible après validation par KOFI.");
   };
   if (list.isLoading) return <Loading />;
   if (list.error) return <Failed onRetry={() => list.refetch()} />;
@@ -369,7 +405,10 @@ function PhotosTab({ notify }: { notify: (message: string, isError?: boolean) =>
     <p className="kofi-adm-sub">Montrez vos vraies réalisations ({items.length}/{list.data?.max ?? 12}). Chaque photo est vérifiée par KOFI avant d’apparaître sur votre profil. Les informations cachées de la photo (dont la position GPS) sont supprimées.</p>
     {!full && <div className="kofi-adm-reason">
       <label><span>Légende (optionnel)</span><input value={description} onChange={(event) => setDescription(event.target.value)} maxLength={300} placeholder="Ex. Tresses collées, 3 h" /></label>
-      <label className="kofi-button primary small kofi-upload" aria-disabled={uploading}><input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" disabled={uploading} onChange={(event) => { void upload(event.target.files?.[0]); event.target.value = ""; }} />{uploading ? "Envoi en cours…" : "Ajouter une photo"}</label>
+      <div className="kofi-upload-actions">
+        <label className="kofi-button primary small kofi-upload" aria-disabled={Boolean(uploading)}><input type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic,image/heif" disabled={Boolean(uploading)} onChange={(event) => { void upload(event.target.files, (list.data?.max ?? 12) - items.length); event.target.value = ""; }} /><ImageIcon size={14} /> {uploading || "Choisir des photos"}</label>
+        <label className="kofi-button outline small kofi-upload" aria-disabled={Boolean(uploading)}><input type="file" accept="image/*" capture="environment" disabled={Boolean(uploading)} onChange={(event) => { void upload(event.target.files, (list.data?.max ?? 12) - items.length); event.target.value = ""; }} /><Camera size={14} /> Prendre une photo</label>
+      </div>
     </div>}
     {!items.length ? <Empty>Aucune photo pour l’instant.</Empty> : <div className="kofi-photo-grid">{items.map((item) => <figure key={item.id} className="kofi-photo">
       <img src={item.thumbUrl} alt={item.description ?? "Réalisation"} loading="lazy" width={400} height={400} />
@@ -485,7 +524,7 @@ export default function ProPage() {
     {tab === "earnings" && <EarningsTab />}
     {tab === "photos" && <PhotosTab notify={notify} />}
     {tab === "hours" && <HoursTab key={JSON.stringify(profile.weeklyHours)} me={profile} notify={notify} />}
-    {tab === "profile" && <ProfileForm key={profile.slug} initial={{ displayName: profile.displayName, salonName: profile.salonName, city: profile.city, neighborhood: profile.neighborhood, mode: profile.mode, bio: profile.bio, specialties: profile.specialties.join(", ") }} submitLabel={profile.status === "refused" ? "Enregistrer et renvoyer en validation" : "Enregistrer le profil"} busy={updateProfile.isPending} error={profileError} onSubmit={(values) => { setProfileError(""); updateProfile.mutate(toInput(values)); }} />}
+    {tab === "profile" && <ProfileForm key={profile.slug} initial={{ displayName: profile.displayName, salonName: profile.salonName, city: profile.city, neighborhood: profile.neighborhood, mode: profile.mode, bio: profile.bio, specialties: profile.specialties.join(", "), whatsapp: profile.whatsapp.replace(/^\+237/, ""), location: profile.location }} submitLabel={profile.status === "refused" ? "Enregistrer et renvoyer en validation" : "Enregistrer le profil"} busy={updateProfile.isPending} error={profileError} onSubmit={(values) => { setProfileError(""); updateProfile.mutate(toInput(values)); }} />}
     <p className="kofi-adm-hint" style={{ marginTop: 28 }}><Clock3 size={13} /> Tous les horaires sont en heure de Douala. Paiements : voir l’onglet Revenus.</p>
     </section>
   </main>;

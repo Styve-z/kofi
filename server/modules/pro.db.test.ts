@@ -8,7 +8,7 @@ import { appRouter } from "../routers";
 import { at, MONDAY, NOW, openTestDb, resetTestDb, SUNDAY, TEST_DATABASE_URL as url, TUESDAY } from "../test/dbSetup";
 import { setProfessionalStatus } from "./admin";
 import { createBooking, getBookingsForUser, type CreateBookingInput } from "./booking";
-import { getFreeSlots, searchCatalog } from "./catalog";
+import { getFreeSlots, getProfessional, listNeighborhoods, searchCatalog } from "./catalog";
 import { addClosure, applyAsProfessional, getMyOverview, getMyProfessional, listClosures, listMyBookings, removeClosure, saveService, setServiceActive, setWeeklyHours, slugify, transitionMyBooking, updateMyProfile } from "./pro";
 import { doualaDateTime } from "./time";
 
@@ -69,6 +69,28 @@ describe.skipIf(!url)("espace professionnel (base réelle)", () => {
       expect(await getMyProfessional(db, other.id)).toMatchObject({ status: "refused", statusNote: "Photos non conformes" });
       expect(await updateMyProfile(db, other.id, { displayName: "Studio Test", city: "Douala", mode: "salon", bio: "Nouvelles photos" })).toMatchObject({ status: "pending" });
       expect(await getMyProfessional(db, other.id)).toMatchObject({ status: "pending", statusNote: null, bio: "Nouvelles photos" });
+    });
+
+    it("WhatsApp et position : validés, publiés, et conservés si l’application ne les envoie pas", async () => {
+      const base = { displayName: "Cédric Mbarga", salonName: "Cédric Studio", city: "Yaoundé", neighborhood: "Bastos", mode: "salon" as const };
+      await expect(updateMyProfile(db, pro.id, { ...base, whatsapp: "12345" })).rejects.toThrow("WHATSAPP_INVALID");
+      await expect(updateMyProfile(db, pro.id, { ...base, location: { lat: 0, lng: 0 } })).rejects.toThrow("LOCATION_INVALID");
+      await updateMyProfile(db, pro.id, { ...base, whatsapp: "6 90 12 34 56", location: { lat: 3.8794, lng: 11.5138 } });
+      expect(await getMyProfessional(db, pro.id)).toMatchObject({ whatsapp: "+237690123456", location: { lat: 3.8794, lng: 11.5138 } });
+      expect(await getProfessional(db, "cedric-mbarga")).toMatchObject({ whatsapp: "+237690123456", location: { lat: 3.8794, lng: 11.5138 } });
+      // Champs absents : rien ne change. Champs vidés : retirés.
+      await updateMyProfile(db, pro.id, { ...base, bio: "Bio" });
+      expect(await getMyProfessional(db, pro.id)).toMatchObject({ whatsapp: "+237690123456", location: { lat: 3.8794, lng: 11.5138 } });
+      await updateMyProfile(db, pro.id, { ...base, whatsapp: "", location: null });
+      expect(await getMyProfessional(db, pro.id)).toMatchObject({ whatsapp: "", location: null });
+    });
+
+    it("filtre la recherche par quartier, sans tenir compte des accents ni des majuscules", async () => {
+      expect(await listNeighborhoods(db, "Yaoundé")).toContain("Bastos");
+      const inBastos = await searchCatalog(db, { city: "Yaoundé", neighborhood: "bastos" });
+      expect(inBastos.map((item) => item.slug)).toContain("cedric-mbarga");
+      expect(inBastos.every((item) => item.neighborhood.toLowerCase() === "bastos")).toBe(true);
+      expect(await searchCatalog(db, { neighborhood: "Quartier inexistant" })).toEqual([]);
     });
   });
 

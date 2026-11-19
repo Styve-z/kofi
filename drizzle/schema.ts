@@ -37,6 +37,11 @@ export const professionalProfiles = mysqlTable("professional_profiles", {
   salonName: varchar("salonName", { length: 180 }),
   city: varchar("city", { length: 80 }).notNull(),
   neighborhood: varchar("neighborhood", { length: 120 }),
+  // Numéro WhatsApp public (format +2376XXXXXXXX), renseigné volontairement par le professionnel.
+  whatsappPhone: varchar("whatsappPhone", { length: 20 }),
+  // Position du salon (degrés décimaux), pour la carte du profil. Facultative.
+  latitude: decimal("latitude", { precision: 9, scale: 6 }),
+  longitude: decimal("longitude", { precision: 9, scale: 6 }),
   mode: mysqlEnum("mode", ["salon", "domicile", "les deux"]).default("salon").notNull(),
   bio: text("bio"),
   // Liste JSON de libellés (ex. ["Tresses","Soins"]) ; stockée en texte pour rester compatible MySQL/MariaDB.

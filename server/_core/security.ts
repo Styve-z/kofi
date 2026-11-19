@@ -75,6 +75,8 @@ export function applySecurityHeaders(app: Express) {
         "connect-src 'self'",
         "worker-src 'self' blob:",
         "manifest-src 'self'",
+        // Carte du salon sur le profil public (OpenStreetMap, sans clé ni traceur).
+        "frame-src https://www.openstreetmap.org",
         "frame-ancestors 'none'",
         "base-uri 'self'",
         "form-action 'self'",

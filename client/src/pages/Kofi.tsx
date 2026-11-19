@@ -22,6 +22,9 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Smartphone,
+  Gauge,
+  MessageCircle,
+  Navigation,
   Sparkles,
   Star,
   Store,
@@ -38,6 +41,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { isStaff } from "@shared/permissions";
 import { CATEGORY_TILES, illustrationFor, photoSrcSet, photoUrl } from "@/lib/photos";
+import { dataSaverOn, setDataSaver } from "@/lib/dataSaver";
 import { BookingExtras, FavoriteButton, FavoritesPage, FEATURE_ERRORS, GiftCardsPage, HelpPage, LoyaltyPage, OffpeakBadge, RescheduleForm, StaffPicker, TopRatedBadge, type Extras } from "./Features";
 import {
   doualaDay,
@@ -340,6 +344,7 @@ function Footer() {
       <nav aria-label="Professionnels"><h4>Professionnels</h4><Link href="/professionnel">Espace professionnel</Link><Link href="/professionnel">Publier mes tarifs</Link><Link href="/professionnel">Gérer mon agenda</Link></nav>
       <nav aria-label="Informations"><h4>Informations</h4><Link href="/aide">Aide et questions fréquentes</Link><Link href="/cgu">Conditions d’utilisation</Link><Link href="/confidentialite">Confidentialité</Link><Link href="/mentions-legales">Mentions légales</Link></nav>
     </div>
+    <div className="kofi-container kofi-footer-lite"><label className="kofi-check"><input type="checkbox" checked={dataSaverOn} onChange={(event) => setDataSaver(event.target.checked)} /> <Gauge size={14} /> Données légères : photos réduites, sans animation 3D (idéal en 3G ou petit forfait)</label></div>
     <div className="kofi-container kofi-footer-bottom"><span>© {new Date().getFullYear()} KOFI · Une réservation plus humaine.</span><span>Douala · Yaoundé · Bafoussam · Photos d’illustration : Unsplash</span></div>
   </footer>;
 }
@@ -423,7 +428,7 @@ function HomePage() {
           : <><Link href="/recherche" className="kofi-button primary">Trouver un professionnel <ArrowRight size={16} /></Link><Link href="/professionnel" className="kofi-button ghost">Je suis professionnel</Link></>}</div>
         <p className="kofi-note"><ShieldCheck size={15} /> Données de démonstration signalées. Aucun faux portfolio présenté comme réel.</p>
       </div>
-      <div className="kofi-hero-art has-photo" aria-hidden="true"><img className="kofi-hero-photo" src={photoUrl("hero", 1100, 820)} srcSet={photoSrcSet("hero", 1100, 820)} alt="" fetchPriority="high" decoding="async" /><div className="kofi-sun" /><Suspense fallback={null}><Clipper3D className="kofi-clipper-3d" /></Suspense><div className="kofi-art-copy"><h3>Vos cheveux.<br />Vos règles.</h3><p>Réservez au salon ou à domicile, quand c’est le bon moment pour vous.</p></div><div className="kofi-art-card"><strong>Créneaux en temps réel</strong><span>Horaires affichés en heure de Douala</span></div></div>
+      <div className="kofi-hero-art has-photo" aria-hidden="true"><img className="kofi-hero-photo" src={photoUrl("hero", 1100, 820)} srcSet={photoSrcSet("hero", 1100, 820)} alt="" fetchPriority="high" decoding="async" /><div className="kofi-sun" />{!dataSaverOn && <Suspense fallback={null}><Clipper3D className="kofi-clipper-3d" /></Suspense>}<div className="kofi-art-copy"><h3>Vos cheveux.<br />Vos règles.</h3><p>Réservez au salon ou à domicile, quand c’est le bon moment pour vous.</p></div><div className="kofi-art-card"><strong>Créneaux en temps réel</strong><span>Horaires affichés en heure de Douala</span></div></div>
     </section>
     <section className="kofi-container" style={{ marginTop: -6 }}><SearchBox /></section>
     <section className="kofi-container kofi-categories kofi-reveal" aria-labelledby="kofi-cat-title">
@@ -477,15 +482,19 @@ function SearchPage() {
   const [date, setDate] = useState(upcomingDays(3)[2]);
   const [minRating, setMinRating] = useState(0);
   const [offersOnly, setOffersOnly] = useState(params.get("offers") === "1");
+  const [neighborhood, setNeighborhood] = useState(params.get("quartier") || "");
+  const neighborhoods = trpc.catalog.neighborhoods.useQuery({ city }, { staleTime: 5 * 60_000, placeholderData: keepPreviousData });
+  // Changer de ville efface un quartier qui n’y existe pas.
+  useEffect(() => { if (neighborhood && neighborhoods.data && !neighborhoods.isPlaceholderData && !neighborhoods.data.includes(neighborhood)) setNeighborhood(""); }, [neighborhoods.data, neighborhoods.isPlaceholderData, neighborhood]);
   const debouncedQuery = useDebounced(query);
   const days = useMemo(() => upcomingDays(14), []);
   const availableOn = when === "today" ? days[0] : when === "tomorrow" ? days[1] : when === "date" ? date : undefined;
   const results = trpc.catalog.search.useQuery(
-    { query: debouncedQuery || undefined, city, mode: mode === "Tous les modes" ? undefined : mode, maxPrice, sort, availableOn, minRating: minRating || undefined, offersOnly: offersOnly || undefined },
+    { query: debouncedQuery || undefined, city, neighborhood: neighborhood || undefined, mode: mode === "Tous les modes" ? undefined : mode, maxPrice, sort, availableOn, minRating: minRating || undefined, offersOnly: offersOnly || undefined },
     { placeholderData: keepPreviousData },
   );
   const sorted = results.data ?? [];
-  const reset = () => { setQuery(""); setCity("Toutes les villes"); setMode("Tous les modes"); setMaxPrice(30000); setWhen("any"); setMinRating(0); setOffersOnly(false); };
+  const reset = () => { setQuery(""); setCity("Toutes les villes"); setMode("Tous les modes"); setMaxPrice(30000); setWhen("any"); setMinRating(0); setOffersOnly(false); setNeighborhood(""); };
   return <main className="kofi-container kofi-page">
     <div className="kofi-breadcrumb"><Link href="/" className="kofi-button ghost small"><ArrowLeft size={14} /> Accueil</Link> <span>/ Recherche</span></div>
     <h1 className="kofi-page-title">Trouvez votre prochain rendez-vous.</h1>
@@ -496,6 +505,7 @@ function SearchPage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><h3><SlidersHorizontal size={15} style={{ verticalAlign: "-2px" }} /> Filtres</h3><button className="kofi-button ghost small" onClick={reset}>Réinitialiser</button></div>
         <div className="kofi-filter-group"><label className="kofi-filter-label" htmlFor="f-query">Recherche</label><input id="f-query" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Prestation, nom, quartier…" /></div>
         <div className="kofi-filter-group"><label className="kofi-filter-label" htmlFor="f-city">Ville</label><select id="f-city" value={city} onChange={(event) => setCity(event.target.value)}><option>Toutes les villes</option>{CITIES.map((item) => <option key={item}>{item}</option>)}</select></div>
+        <div className="kofi-filter-group"><label className="kofi-filter-label" htmlFor="f-quartier">Quartier</label><select id="f-quartier" value={neighborhood} onChange={(event) => setNeighborhood(event.target.value)} disabled={!neighborhoods.data?.length}><option value="">{neighborhoods.data?.length ? "Tous les quartiers" : "Aucun quartier renseigné"}</option>{neighborhoods.data?.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
         <fieldset className="kofi-filter-group" style={{ border: 0, padding: 0, margin: 0 }}><legend className="kofi-filter-label">Mode de prestation</legend><label className="kofi-check"><input type="radio" name="mode" checked={mode === "Tous les modes"} onChange={() => setMode("Tous les modes")} /> Tous les modes</label><label className="kofi-check"><input type="radio" name="mode" checked={mode === "salon"} onChange={() => setMode("salon")} /> En salon</label><label className="kofi-check"><input type="radio" name="mode" checked={mode === "domicile"} onChange={() => setMode("domicile")} /> À domicile</label></fieldset>
         <fieldset className="kofi-filter-group" style={{ border: 0, padding: 0, margin: 0 }}><legend className="kofi-filter-label">Disponibilité</legend>
           <div className="kofi-chips">{([["any", "Peu importe"], ["today", "Aujourd’hui"], ["tomorrow", "Demain"], ["date", "Choisir un jour"]] as const).map(([value, label]) => <button type="button" key={value} className={`kofi-chip ${when === value ? "is-on" : ""}`} aria-pressed={when === value} onClick={() => setWhen(value)}>{label}</button>)}</div>
@@ -513,6 +523,33 @@ function SearchPage() {
       </section>
     </div>
   </main>;
+}
+
+type PublicProfessional = Pick<Professional, "salon" | "neighborhood" | "city" | "location" | "mode" | "whatsapp">;
+
+/** Ouvre WhatsApp (application ou web) avec un premier message déjà rédigé. */
+function WhatsAppButton({ phone, name }: { phone: string; name: string }) {
+  const text = `Bonjour ${name}, je vous ai trouvé sur KOFI et j’aimerais un renseignement.`;
+  return <a className="kofi-button kofi-whatsapp small" href={`https://wa.me/${phone.replace(/\D/g, "")}?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer"><MessageCircle size={15} /> Écrire sur WhatsApp</a>;
+}
+
+/** « Où nous trouver » : carte OpenStreetMap si le pro a relevé sa position, sinon recherche du quartier. */
+function ProLocation({ professional }: { professional: PublicProfessional }) {
+  const place = [professional.salon, professional.neighborhood, professional.city, "Cameroun"].filter(Boolean).join(", ");
+  const area = [professional.neighborhood, professional.city, "Cameroun"].filter(Boolean).join(", ");
+  const spot = professional.location;
+  if (professional.mode === "domicile" && !spot) return null;
+  const directions = spot ? `https://www.google.com/maps/dir/?api=1&destination=${spot.lat},${spot.lng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}`;
+  const d = 0.004;
+  return <section className="kofi-location" aria-labelledby="kofi-location-title">
+    <div className="kofi-section-header" style={{ marginTop: 28 }}><div><span className="kofi-eyebrow">Accès</span><h2 id="kofi-location-title">Où nous trouver</h2><p><MapPin size={14} style={{ verticalAlign: "-2px" }} /> {area}</p></div></div>
+    {spot && !dataSaverOn && <iframe className="kofi-map" title={`Carte : ${place}`} loading="lazy" referrerPolicy="no-referrer" src={`https://www.openstreetmap.org/export/embed.html?bbox=${spot.lng - d},${spot.lat - d},${spot.lng + d},${spot.lat + d}&layer=mapnik&marker=${spot.lat},${spot.lng}`} />}
+    <div className="kofi-location-row">
+      <a className="kofi-button primary small" href={directions} target="_blank" rel="noreferrer"><Navigation size={14} /> {spot ? "Itinéraire" : "Chercher le quartier sur la carte"}</a>
+      {spot && <a className="kofi-link" href={`https://www.openstreetmap.org/?mlat=${spot.lat}&mlon=${spot.lng}#map=17/${spot.lat}/${spot.lng}`} target="_blank" rel="noreferrer">{dataSaverOn ? "Voir la carte" : "Agrandir la carte"}</a>}
+    </div>
+    {!spot && <p className="kofi-adm-hint">Position exacte non renseignée : confirmez l’adresse avec le professionnel{professional.whatsapp ? " sur WhatsApp" : ""}.</p>}
+  </section>;
 }
 
 function ProfessionalPage({ slug, onBook }: { slug: string; onBook: (draft: BookingDraft) => void }) {
@@ -540,12 +577,13 @@ function ProfessionalPage({ slug, onBook }: { slug: string; onBook: (draft: Book
   const toggleService = (id: string) => setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   return <main className="kofi-container kofi-page">
     <div className="kofi-breadcrumb"><Link href="/recherche" className="kofi-button ghost small"><ArrowLeft size={14} /> Résultats</Link> <span>/ {professional.name}</span></div>
-    <div className="kofi-profile-head"><ProVisual professional={professional} /><div><div className="kofi-eyebrow">{professional.verified ? <><BadgeCheck size={14} /> Professionnel vérifié</> : <>Profil en cours de vérification</>}</div><h1>{professional.name}</h1>{(professional.topRated || professional.offpeakMaxPercent > 0) && <div className="kofi-badges" style={{ marginBottom: 10 }}>{professional.topRated && <TopRatedBadge />}<OffpeakBadge percent={professional.offpeakMaxPercent} /></div>}<FavoriteButton slug={professional.slug} label /><p>{professional.bio}</p><div className="kofi-profile-meta"><span><MapPin size={14} /> {professional.salon} · {professional.neighborhood}, {professional.city}</span><span>{professional.reviewCount ? <><Star size={14} fill="currentColor" /> {professional.rating.toFixed(1)} ({professional.reviewCount} avis)</> : "Nouveau sur KOFI"}</span><span>{modeLabel(professional.mode)}</span></div></div></div>
+    <div className="kofi-profile-head"><ProVisual professional={professional} /><div><div className="kofi-eyebrow">{professional.verified ? <><BadgeCheck size={14} /> Professionnel vérifié</> : <>Profil en cours de vérification</>}</div><h1>{professional.name}</h1>{(professional.topRated || professional.offpeakMaxPercent > 0) && <div className="kofi-badges" style={{ marginBottom: 10 }}>{professional.topRated && <TopRatedBadge />}<OffpeakBadge percent={professional.offpeakMaxPercent} /></div>}<FavoriteButton slug={professional.slug} label /><p>{professional.bio}</p><div className="kofi-profile-meta"><span><MapPin size={14} /> {professional.salon} · {professional.neighborhood}, {professional.city}</span><span>{professional.reviewCount ? <><Star size={14} fill="currentColor" /> {professional.rating.toFixed(1)} ({professional.reviewCount} avis)</> : "Nouveau sur KOFI"}</span><span>{modeLabel(professional.mode)}</span></div>{professional.whatsapp && <WhatsAppButton phone={professional.whatsapp} name={professional.name} />}</div></div>
     <DemoBanner />
     <div className="kofi-profile-body">
       <section>
         <div className="kofi-section-header" style={{ marginTop: 25 }}><div><span className="kofi-eyebrow">Choisissez votre formule</span><h2>Prestations</h2><p>Sélectionnez une ou plusieurs prestations pour composer votre rendez-vous.</p></div></div>
         <div className="kofi-service-list">{professional.services.map((service) => { const isSelected = selectedIds.includes(service.id); return <div className={`kofi-service-row ${isSelected ? "selected" : ""}`} key={service.id}><div><strong>{service.name}</strong><small><Clock3 size={13} /> {formatDuration(service.duration)} · {service.category}</small></div><div className="kofi-service-price"><strong>{formatXaf(service.price)}</strong><br /><button className={`kofi-button ${isSelected ? "soft" : "outline"} small`} onClick={() => toggleService(service.id)} aria-pressed={isSelected}>{isSelected ? <><Check size={14} /> Ajoutée</> : "Ajouter"}</button></div></div>; })}</div>
+        <ProLocation professional={professional} />
       </section>
       <aside className="kofi-sticky-booking">
         <h3>Votre créneau</h3>

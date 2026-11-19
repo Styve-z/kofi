@@ -380,6 +380,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .kofi-upload { position:relative; align-self:flex-start; cursor:pointer; }
 .kofi-upload input { position:absolute; inset:0; opacity:0; cursor:pointer; }
 .kofi-upload:focus-within { outline:3px solid #b8733f; outline-offset:2px; }
+.kofi-upload-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.kofi-upload-actions .kofi-upload { display:inline-flex; align-items:center; gap:6px; }
+.kofi-upload[aria-disabled="true"] { opacity:.65; pointer-events:none; }
+
+/* WhatsApp, carte et itinéraire */
+.kofi-whatsapp { display:inline-flex; align-items:center; gap:7px; margin-top:12px; background:#1fa855; color:#fff; border:0; }
+.kofi-whatsapp:hover { background:#178a45; color:#fff; }
+.kofi-location-row { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; margin-top:12px; }
+.kofi-map { display:block; width:100%; height:260px; border:0; border-radius:16px; background:#ece8e1; box-shadow:0 1px 0 #e7e4de inset; }
+@media (max-width:640px) { .kofi-map { height:210px; } }
+
+/* Données légères */
+.kofi-footer-lite { margin-top:26px; font-size:13px; color:#5d6779; }
+.kofi-footer-lite .kofi-check { display:inline-flex; align-items:center; gap:7px; }
+html.kofi-lite .kofi-reveal { opacity:1 !important; transform:none !important; transition:none !important; }
+html.kofi-lite *, html.kofi-lite *::before, html.kofi-lite *::after { animation-duration:0s !important; animation-iteration-count:1 !important; }
 
 /* ---------- Paiement ---------- */
 .kofi-pay { grid-column:1 / -1; border-top:1px solid #e8e5df; padding-top:14px; display:grid; gap:10px; }

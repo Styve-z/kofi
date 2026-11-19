@@ -5,6 +5,7 @@ import type { Database } from "../db";
 import { buildViews, type BookingStatus, type BookingView } from "./booking";
 import { BusinessError } from "./errors";
 import { notifyCustomerOfStatus } from "./notifications";
+import { normalizeCameroonPhone } from "./sms";
 import { onBookingClosed, onBookingCompleted, onBookingConfirmed, startRefund } from "./payments/index";
 import { DEFAULT_WEEKLY_HOURS, isValidWeeklyHours, parseWeeklyHours, regenerateOpenSlots, type WeeklyHours } from "./schedule";
 import { addDays, doualaDateTime, doualaDay } from "./time";
@@ -20,7 +21,16 @@ type Profile = typeof professionalProfiles.$inferSelect;
 export type ProfileInput = {
   displayName: string; salonName?: string; city: string; neighborhood?: string;
   mode: "salon" | "domicile" | "les deux"; bio?: string; specialties?: string[];
+  /** Numéro WhatsApp affiché publiquement (vide = pas de bouton WhatsApp). */
+  whatsapp?: string;
+  /** Position du salon ; `null` efface la position enregistrée, `undefined` la laisse telle quelle. */
+  location?: { lat: number; lng: number } | null;
 };
+
+/** Cameroun, avec une marge : refuse une position manifestement fausse (ex. 0,0). */
+export function isInCameroon(lat: number, lng: number) {
+  return lat >= 1.5 && lat <= 13.2 && lng >= 8.3 && lng <= 16.3;
+}
 
 const ACTIVE: BookingStatus[] = ["pending", "confirmed"];
 
@@ -44,10 +54,24 @@ function cleanProfile(input: ProfileInput) {
   const city = input.city.trim();
   if (displayName.length < 2 || city.length < 2) throw new BusinessError("PROFILE_INVALID");
   const specialties = [...new Set((input.specialties ?? []).map((item) => item.trim()).filter(Boolean))].slice(0, 8);
+  // WhatsApp : `undefined` = inchangé (anciennes versions de l’application), "" = retiré.
+  const contact: { whatsappPhone?: string | null } = {};
+  if (input.whatsapp !== undefined) {
+    contact.whatsappPhone = input.whatsapp.trim() ? normalizeCameroonPhone(input.whatsapp) : null;
+    if (input.whatsapp.trim() && !contact.whatsappPhone) throw new BusinessError("WHATSAPP_INVALID");
+  }
+  const location: { latitude?: string | null; longitude?: string | null } = {};
+  if (input.location === null) { location.latitude = null; location.longitude = null; }
+  else if (input.location) {
+    const { lat, lng } = input.location;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !isInCameroon(lat, lng)) throw new BusinessError("LOCATION_INVALID");
+    location.latitude = lat.toFixed(6); location.longitude = lng.toFixed(6);
+  }
   return {
     displayName, city, mode: input.mode,
     salonName: input.salonName?.trim() || null, neighborhood: input.neighborhood?.trim() || null,
     bio: input.bio?.trim() || null, specialties: JSON.stringify(specialties),
+    ...contact, ...location,
   };
 }
 
@@ -63,7 +87,10 @@ export async function getMyProfessional(db: Database, userId: number) {
   try { specialties = JSON.parse(profile.specialties ?? "[]"); } catch { /* ignoré */ }
   return {
     slug: profile.slug, displayName: profile.displayName, salonName: profile.salonName ?? "", city: profile.city, neighborhood: profile.neighborhood ?? "",
-    mode: profile.mode, bio: profile.bio ?? "", specialties, status: profile.verificationStatus, statusNote: profile.verificationNote,
+    mode: profile.mode, bio: profile.bio ?? "", specialties,
+    whatsapp: profile.whatsappPhone ?? "",
+    location: profile.latitude && profile.longitude ? { lat: Number(profile.latitude), lng: Number(profile.longitude) } : null,
+    status: profile.verificationStatus, statusNote: profile.verificationNote,
     rating: Number(profile.rating), reviewCount: profile.reviewCount,
     weeklyHours: parseWeeklyHours(profile.weeklyHours) ?? {},
     services: services.map((service) => ({ id: service.code, name: service.name, category: service.category ?? "", durationMinutes: service.durationMinutes, preparationMinutes: service.preparationMinutes, priceXaf: service.priceXaf, active: service.isActive === 1 })),
