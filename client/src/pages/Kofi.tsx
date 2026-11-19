@@ -409,6 +409,7 @@ function SearchBox({ compact = false }: { compact?: boolean }) {
 function HomePage() {
   const [, setLocation] = useLocation();
   const featured = trpc.catalog.search.useQuery({ limit: 3 });
+  const account = useAccountKind();
   useReveal([featured.isLoading]);
   return <>
     <section className="kofi-container kofi-hero">
@@ -416,7 +417,10 @@ function HomePage() {
         <span className="kofi-eyebrow"><Sparkles size={14} /> La réservation qui vous ressemble</span>
         <h1 className="kofi-title">Trouvez votre <em>main de confiance.</em></h1>
         <p className="kofi-lead">KOFI rend la beauté plus simple au Cameroun : des profils lisibles, des tarifs affichés et des créneaux clairs, sans appels à répétition.</p>
-        <div className="kofi-hero-actions"><Link href="/recherche" className="kofi-button primary">Trouver un professionnel <ArrowRight size={16} /></Link><Link href="/professionnel" className="kofi-button ghost">Je suis professionnel</Link></div>
+        {/* Un professionnel ne cherche pas de professionnel : on l’envoie directement vers son espace. */}
+        <div className="kofi-hero-actions">{account.kind === "pro"
+          ? <Link href="/professionnel" className="kofi-button primary">Mon espace professionnel <ArrowRight size={16} /></Link>
+          : <><Link href="/recherche" className="kofi-button primary">Trouver un professionnel <ArrowRight size={16} /></Link><Link href="/professionnel" className="kofi-button ghost">Je suis professionnel</Link></>}</div>
         <p className="kofi-note"><ShieldCheck size={15} /> Données de démonstration signalées. Aucun faux portfolio présenté comme réel.</p>
       </div>
       <div className="kofi-hero-art has-photo" aria-hidden="true"><img className="kofi-hero-photo" src={photoUrl("hero", 1100, 820)} srcSet={photoSrcSet("hero", 1100, 820)} alt="" fetchPriority="high" decoding="async" /><div className="kofi-sun" /><Suspense fallback={null}><Clipper3D className="kofi-clipper-3d" /></Suspense><div className="kofi-art-copy"><h3>Vos cheveux.<br />Vos règles.</h3><p>Réservez au salon ou à domicile, quand c’est le bon moment pour vous.</p></div><div className="kofi-art-card"><strong>Créneaux en temps réel</strong><span>Horaires affichés en heure de Douala</span></div></div>
@@ -448,7 +452,7 @@ function HomePage() {
           <h2>Coiffeurs, barbiers, esthéticiennes : remplissez votre agenda.</h2>
           <p>Publiez vos tarifs, vos horaires et vos réalisations. Recevez des demandes claires, acceptez en un geste, suivez vos revenus.</p>
           <ul><li><CheckCircle2 size={16} /> Profil vérifié par l’équipe KOFI</li><li><CheckCircle2 size={16} /> Agenda et congés en ligne</li><li><CheckCircle2 size={16} /> Paiement Mobile Money</li></ul>
-          <div className="kofi-hero-actions"><Link href="/professionnel" className="kofi-button primary">Créer mon espace pro <ArrowRight size={16} /></Link></div>
+          <div className="kofi-hero-actions"><Link href="/professionnel" className="kofi-button primary">{account.kind === "pro" ? "Gérer mon espace pro" : "Créer mon espace pro"} <ArrowRight size={16} /></Link></div>
         </div>
         <div className="kofi-pro-cta-art" aria-hidden="true">
           <img className="kofi-pro-cta-photo" src={photoUrl("proCta", 720, 820)} srcSet={photoSrcSet("proCta", 720, 820)} alt="" loading="lazy" decoding="async" />
